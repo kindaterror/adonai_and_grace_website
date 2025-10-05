@@ -1,5 +1,5 @@
 // src/pages/api/emailService.ts
- import nodemailer from "nodemailer";
+import * as nodemailer from "nodemailer";
 
 // ---- Helpers ----
 function required(name: string): string {
@@ -34,27 +34,61 @@ const VERIFY_TTL_HOURS = toIntEnv(process.env.EMAIL_VERIFY_TTL_HOURS, 24, 1, 24 
 const FRONTEND_URL = process.env.FRONTEND_URL || process.env.DEPLOY_PUBLIC_ORIGIN || "";
 const EMAIL_FROM = required("EMAIL_FROM");
 
-// ---- SMTP Transport ----
-const transporter = nodemailer.createTransport({
-  host: required("SMTP_HOST"),
-  port: (function(){ const p = Number(required("SMTP_PORT")); return Number.isFinite(p) ? p : 587 })(),
-  secure: String(process.env.SMTP_SECURE || "false") === "true",
-  auth: {
-    user: required("SMTP_USER"),
-    pass: required("SMTP_PASS"),
-  },
-});
+// ---- SMTP Transport (with fallback + timeouts) ----
+const SMTP_HOST = required("SMTP_HOST");
+const PRIMARY_PORT = (() => { const p = Number(required("SMTP_PORT")); return Number.isFinite(p) ? p : 587; })();
+// secure true usually means implicit TLS (465). If user sets secure but picks 587 we'll allow STARTTLS anyway.
+const PRIMARY_SECURE = String(process.env.SMTP_SECURE || "false") === "true";
+const SMTP_USER = required("SMTP_USER");
+const SMTP_PASS = required("SMTP_PASS");
+
+function makeTransport(port: number, secure: boolean) {
+  const options: nodemailer.TransportOptions = {
+    host: SMTP_HOST,
+    port,
+    secure,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+    connectionTimeout: 15_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
+    pool: false,
+    tls: {
+      rejectUnauthorized: String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED || "true") === "true"
+    }
+  } as any; // cast to any to avoid over-narrowed union issues if type defs change
+  return nodemailer.createTransport(options as any);
+}
+
+let transporter = makeTransport(PRIMARY_PORT, PRIMARY_SECURE);
+
+async function sendMailWithFallback(to: string, subject: string, html: string) {
+  try {
+    return await transporter.sendMail({ from: EMAIL_FROM, to, subject, html });
+  } catch (err: any) {
+    const code = err?.code || err?.errno || err?.responseCode;
+    const isTimeout = code === 'ETIMEDOUT' || code === 'ESOCKET' || /timeout/i.test(String(err?.message || ''));
+    const isConn = code === 'ECONNECTION' || code === 'ECONNREFUSED';
+    // Attempt fallback only if using Gmail + implicit TLS (465) originally
+    if ((isTimeout || isConn) && SMTP_HOST === 'smtp.gmail.com' && PRIMARY_PORT === 465) {
+      console.warn('[email] Primary SMTP connection failed (port 465). Trying STARTTLS fallback on 587...');
+      try {
+        transporter = makeTransport(587, false);
+        return await transporter.sendMail({ from: EMAIL_FROM, to, subject, html });
+      } catch (e2) {
+        console.error('[email] Fallback SMTP (587) also failed:', e2);
+        throw e2;
+      }
+    }
+    console.error('[email] SMTP send failed (no fallback attempted):', err);
+    throw err;
+  }
+}
 
 // Optionally verify connection at startup
 // transporter.verify().then(() => console.log("SMTP ready")).catch(err => console.error("SMTP verify failed:", err));
 
 async function sendMail(to: string, subject: string, html: string) {
-  await transporter.sendMail({
-    from: EMAIL_FROM,
-    to,
-    subject,
-    html,
-  });
+  return sendMailWithFallback(to, subject, html);
 }
 
 // ---- Public API (unchanged signatures) ----
