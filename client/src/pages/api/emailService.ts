@@ -201,7 +201,16 @@ async function sendMail(to: string, subject: string, html: string) {
       return await sendViaSendGrid(to, subject, html);
     }
   } catch (apiErr) {
-    console.error('[email] API provider failed, falling back to SMTP:', apiErr);
+    const msg = String((apiErr as any)?.message || apiErr);
+    // Resend test-mode restriction message
+    if (msg.includes('You can only send testing emails')) {
+      console.warn('[email] Resend test-mode restriction: domain not verified; email to non-owner blocked. Skipping SMTP fallback.');
+      const err = new Error('EMAIL_DOMAIN_UNVERIFIED');
+      (err as any).code = 'EMAIL_DOMAIN_UNVERIFIED';
+      (err as any).original = apiErr;
+      throw err;
+    }
+    console.error('[email] API provider failed, attempting SMTP fallback:', apiErr);
   }
   return sendMailWithFallback(to, subject, html);
 }
