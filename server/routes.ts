@@ -18,7 +18,6 @@ import { simpleRateLimit } from "./utils/rateLimit";
 import { BookCreateApiSchema } from "@shared/bookCreateApiSchema";
 import cors from "cors";
 import { awardExclusiveStoryBadge } from "@/lib/awardExclusiveStoryBadge";
-import * as nodemailer from "nodemailer";
 // -----------------------------------------------------------------------------
 // JWT Secret
 // -----------------------------------------------------------------------------
@@ -295,6 +294,17 @@ async function ensureUniqueSlug(base: string) {
 // Routes
 // -----------------------------------------------------------------------------
 export function setupRoutes(app: Express): Server {
+  // Injection/path hardening helpers
+  const NUM_ID_REGEX = /^\d{1,10}$/;
+  function parseNumericId(raw: string | undefined): number | null {
+    if (!raw || !NUM_ID_REGEX.test(raw)) return null;
+    const n = Number(raw);
+    if (!Number.isSafeInteger(n) || n <= 0) return null;
+    return n;
+  }
+  function escapeLike(input: string) {
+    return input.replace(/[\\%_]/g, ch => `\\${ch}`);
+  }
   // NOTE: do NOT serve local /uploads here since we’re using Cloudinary now.
 app.use(cors(corsOptions));
 // ensure preflight gets headers
@@ -1000,29 +1010,16 @@ app.post("/api/auth/forgot-password", forgotPasswordLimiter, async (req, res) =>
       })
       .where(eq(schema.users.id, user.id));
 
-    // email the RAW token (not the hash). If SMTP fails we still respond 200 to avoid user enumeration
-    try {
-      await sendPasswordResetEmail(
-        user.email,
-        rawToken,
-        user.firstName || user.username || "User"
-      );
-      return res
-        .status(200)
-        .json({ message: "If the email exists, a reset link has been sent" });
-    } catch (e: any) {
-      console.error("SMTP send error (password reset):", e?.message || e);
-      // Provide a fallback: include token ONLY if explicit env flag allows (for temporary debugging)
-      if (process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true') {
-        return res.status(200).json({
-          message: "Email delivery failed but token generated (debug mode)",
-          token: rawToken
-        });
-      }
-      return res.status(200).json({
-        message: "If the email exists, a reset link has been sent (delivery pending)",
-      });
-    }
+    // email the RAW token (not the hash)
+    await sendPasswordResetEmail(
+      user.email,
+      rawToken,
+      user.firstName || user.username || "User"
+    );
+
+    return res
+      .status(200)
+      .json({ message: "If the email exists, a reset link has been sent" });
   } catch (error) {
     console.error("Error sending password reset:", error);
     return res.status(500).json({ message: "Failed to send reset email" });
@@ -1094,31 +1091,6 @@ app.post("/api/auth/reset-password", async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 });
-
-// -----------------------------------------------------------------------------
-// SMTP Debug (optional) - guarded by ALLOW_SMTP_DEBUG env var and requires a ?key= query matching SMTP_DEBUG_KEY
-// -----------------------------------------------------------------------------
-if (process.env.ALLOW_SMTP_DEBUG === 'true') {
-  app.get('/api/debug/smtp', async (req, res) => {
-    try {
-      const supplied = req.query.key;
-      if (!process.env.SMTP_DEBUG_KEY || supplied !== process.env.SMTP_DEBUG_KEY) {
-        return res.status(403).json({ ok: false, error: 'Forbidden' });
-      }
-      const host = process.env.SMTP_HOST;
-      const port = Number(process.env.SMTP_PORT || '587');
-      const secure = String(process.env.SMTP_SECURE || 'false') === 'true';
-      const user = process.env.SMTP_USER;
-      const passSet = !!process.env.SMTP_PASS;
-      const transport = nodemailer.createTransport({ host, port, secure, auth: { user, pass: process.env.SMTP_PASS }, connectionTimeout: 8000, greetingTimeout: 6000, socketTimeout: 10000 });
-      const start = Date.now();
-      await transport.verify();
-      return res.json({ ok: true, ms: Date.now() - start, host, port, secure, user, passSet });
-    } catch (e: any) {
-      return res.status(500).json({ ok: false, error: e?.message || String(e) });
-    }
-  });
-}
   
 const router = express.Router();
 
@@ -2926,12 +2898,13 @@ if (gradeLevelQ && gradeLevelQ !== "all") {
 
       // text search
       if (search.trim()) {
+        const term = escapeLike(search.trim()).slice(0,100);
         conditions.push(
           or(
-            like(schema.users.firstName, `%${search}%`),
-            like(schema.users.lastName, `%${search}%`),
-            like(schema.users.email, `%${search}%`),
-            like(schema.users.username, `%${search}%`)
+            like(schema.users.firstName, `%${term}%`),
+            like(schema.users.lastName, `%${term}%`),
+            like(schema.users.email, `%${term}%`),
+            like(schema.users.username, `%${term}%`)
           )
         );
       }
@@ -2980,7 +2953,8 @@ if (gradeLevelQ && gradeLevelQ !== "all") {
 // APPROVE (idempotent; works from pending/rejected/approved)
 app.post("/api/students/:id/approve", authenticate, authorize(["admin"]), async (req, res) => {
   try {
-    const studentId = Number(req.params.id);
+    const studentId = parseNumericId(req.params.id);
+    if (!studentId) return res.status(400).json({ message: "Invalid student id" });
 
     // find by id + role ONLY (no approvalStatus filter)
     const student = await db.query.users.findFirst({
@@ -3019,7 +2993,8 @@ app.post("/api/students/:id/approve", authenticate, authorize(["admin"]), async 
 // REJECT (still only from pending)
 app.post("/api/students/:id/reject", authenticate, authorize(["admin"]), async (req, res) => {
   try {
-    const studentId = Number(req.params.id);
+    const studentId = parseNumericId(req.params.id);
+    if (!studentId) return res.status(400).json({ message: "Invalid student id" });
     const { reason } = req.body;
 
     const student = await db.query.users.findFirst({
@@ -3061,12 +3036,13 @@ app.post("/api/students/:id/reject", authenticate, authorize(["admin"]), async (
         conditions.push(eq(schema.users.approvalStatus, approvalStatus as any));
       }
       if (search?.trim()) {
+        const term = escapeLike(search.trim()).slice(0,100);
         conditions.push(
           or(
-            like(schema.users.firstName, `%${search}%`),
-            like(schema.users.lastName, `%${search}%`),
-            like(schema.users.email, `%${search}%`),
-            like(schema.users.username, `%${search}%`)
+            like(schema.users.firstName, `%${term}%`),
+            like(schema.users.lastName, `%${term}%`),
+            like(schema.users.email, `%${term}%`),
+            like(schema.users.username, `%${term}%`)
           )
         );
       }
@@ -3081,7 +3057,8 @@ app.post("/api/students/:id/reject", authenticate, authorize(["admin"]), async (
 
   app.post("/api/teachers/:id/approve", authenticate, authorize(["admin"]), async (req, res) => {
     try {
-      const teacherId = parseInt(req.params.id);
+      const teacherId = parseNumericId(req.params.id);
+      if (!teacherId) return res.status(400).json({ message: "Invalid teacher id" });
       const teacher = await db.query.users.findFirst({
         where: and(eq(schema.users.id, teacherId), eq(schema.users.role, "teacher")),
       });
@@ -3102,7 +3079,8 @@ app.post("/api/students/:id/reject", authenticate, authorize(["admin"]), async (
 
   app.post("/api/teachers/:id/reject", authenticate, authorize(["admin"]), async (req, res) => {
     try {
-      const teacherId = parseInt(req.params.id);
+      const teacherId = parseNumericId(req.params.id);
+      if (!teacherId) return res.status(400).json({ message: "Invalid teacher id" });
       const { reason } = req.body;
 
       const teacher = await db.query.users.findFirst({
@@ -3128,7 +3106,8 @@ app.post("/api/students/:id/reject", authenticate, authorize(["admin"]), async (
   // =========================
   app.get("/api/books/:bookId/pages", authenticate, authorize(["admin", "teacher", "student"]), async (req, res) => {
     try {
-      const bookId = parseInt(req.params.bookId);
+      const bookId = parseNumericId(req.params.bookId);
+      if (!bookId) return res.status(400).json({ message: "Invalid book id" });
       const pages = await db.query.pages.findMany({
         where: eq(schema.pages.bookId, bookId),
         orderBy: asc(schema.pages.pageNumber),
@@ -3143,7 +3122,8 @@ app.post("/api/students/:id/reject", authenticate, authorize(["admin"]), async (
 
   app.get("/api/pages/:id", authenticate, authorize(["admin", "teacher", "student"]), async (req, res) => {
     try {
-      const pageId = parseInt(req.params.id);
+      const pageId = parseNumericId(req.params.id);
+      if (!pageId) return res.status(400).json({ message: "Invalid page id" });
       const page = await db.query.pages.findFirst({
         where: eq(schema.pages.id, pageId),
         with: { questions: true },
@@ -3227,7 +3207,8 @@ app.post("/api/students/:id/reject", authenticate, authorize(["admin"]), async (
 
   app.put("/api/pages/:id", authenticate, authorize(["admin", "teacher"]), async (req, res) => {
     try {
-      const pageId = Number(req.params.id);
+      const pageId = parseNumericId(req.params.id);
+      if (!pageId) return res.status(400).json({ message: "Invalid page id" });
       const { title, content, imageUrl, pageNumber, questions, shuffleQuestions } = req.body;
 
       if (!content || pageNumber === undefined || pageNumber === null) {
@@ -3271,7 +3252,8 @@ app.post("/api/students/:id/reject", authenticate, authorize(["admin"]), async (
 
   app.delete("/api/pages/:id", authenticate, authorize(["admin", "teacher"]), async (req, res) => {
     try {
-      const pageId = parseInt(req.params.id);
+      const pageId = parseNumericId(req.params.id);
+      if (!pageId) return res.status(400).json({ message: "Invalid page id" });
       const page = await db.query.pages.findFirst({
         where: eq(schema.pages.id, pageId),
         with: { questions: true },
@@ -3291,7 +3273,8 @@ app.post("/api/students/:id/reject", authenticate, authorize(["admin"]), async (
 
   app.post("/api/books/:bookId/pages", authenticate, authorize(["admin", "teacher"]), async (req, res) => {
     try {
-      const bookId = Number(req.params.bookId);
+      const bookId = parseNumericId(req.params.bookId);
+      if (!bookId) return res.status(400).json({ message: "Invalid book id" });
       const { title, content, imageUrl, pageNumber, questions, shuffleQuestions } = req.body;
 
       if (!content || pageNumber === undefined || pageNumber === null) {

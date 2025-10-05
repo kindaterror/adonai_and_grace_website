@@ -132,6 +132,12 @@ export function getCSPHeader(): string {
     "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
     "frame-ancestors": ["'none'"],
     "base-uri": ["'self'"],
+    // Added to satisfy scanners complaining about missing directive fallback
+    "form-action": ["'self'"],
+    // Forbid legacy plugin content
+    "object-src": ["'none'"],
+    // Defensive: disallow embedding other frames unless explicitly added later
+    "frame-src": ["'none'"],
   };
 
   // Allow cloudinary and local dev host for images and connect

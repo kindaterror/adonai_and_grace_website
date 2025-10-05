@@ -21,6 +21,23 @@ const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 
+// Remove (where possible) the generic Server header sometimes added by upstream
+app.use((req, res, next) => { try { res.removeHeader('Server'); } catch {} next(); });
+
+// Redirect plain HTTP to HTTPS in production (Render sets X-Forwarded-Proto)
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    try {
+      const xfProto = req.headers['x-forwarded-proto'];
+      if (xfProto && typeof xfProto === 'string' && xfProto.split(',')[0] !== 'https') {
+        const host = req.headers.host;
+        if (host) return res.redirect(301, `https://${host}${req.url}`);
+      }
+    } catch {}
+    next();
+  });
+}
+
 // Security headers baseline
 app.use(helmet({
   crossOriginResourcePolicy: false,
@@ -48,6 +65,8 @@ app.use((req, res, next) => {
     if (process.env.NODE_ENV === "production") {
       res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
     }
+    // Opt-in modern isolation & disable legacy features (adjust as needed)
+    res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=(), fullscreen=(self)");
   } catch {}
   next();
 });
