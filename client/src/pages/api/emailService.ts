@@ -1,5 +1,7 @@
 // src/pages/api/emailService.ts
 import * as nodemailer from "nodemailer";
+import https from 'node:https';
+import { URL } from 'node:url';
 
 // ---- Helpers ----
 function required(name: string): string {
@@ -34,13 +36,43 @@ const VERIFY_TTL_HOURS = toIntEnv(process.env.EMAIL_VERIFY_TTL_HOURS, 24, 1, 24 
 const FRONTEND_URL = process.env.FRONTEND_URL || process.env.DEPLOY_PUBLIC_ORIGIN || "";
 const EMAIL_FROM = required("EMAIL_FROM");
 
-// ---- SMTP Transport (with fallback + timeouts) ----
-const SMTP_HOST = required("SMTP_HOST");
-const PRIMARY_PORT = (() => { const p = Number(required("SMTP_PORT")); return Number.isFinite(p) ? p : 587; })();
-// secure true usually means implicit TLS (465). If user sets secure but picks 587 we'll allow STARTTLS anyway.
-const PRIMARY_SECURE = String(process.env.SMTP_SECURE || "false") === "true";
-const SMTP_USER = required("SMTP_USER");
-const SMTP_PASS = required("SMTP_PASS");
+// Helper to generate a basic plain-text version of our HTML emails for better deliverability.
+function htmlToText(html: string): string {
+  return html
+    .replace(/\n+/g, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<head[\s\S]*?<\/head>/gi, '')
+    .replace(/<[^>]+>/g, ' ') // strip tags
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s{2,}/g, ' ') // collapse whitespace
+    .trim();
+}
+
+// ---- Transport Strategy ----
+// We now support three outbound methods in this priority order:
+// 1. RESEND_API_KEY  -> Resend HTTPS API
+// 2. SENDGRID_API_KEY -> SendGrid HTTPS API
+// 3. Raw SMTP (Gmail or other) via Nodemailer (may be blocked on some hosts)
+// If SMTP repeatedly times out, configure one of the API providers above; they use port 443
+// and are far less likely to be firewalled.
+
+const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || "";
+const EMAIL_PROVIDER = (process.env.EMAIL_PROVIDER || '').toLowerCase(); // optional explicit selection
+
+// ---- SMTP Transport (with fallback + timeouts + debug) ----
+// Made OPTIONAL: If you only configure RESEND_API_KEY or SENDGRID_API_KEY, we won't require SMTP_* vars.
+const SMTP_HOST = process.env.SMTP_HOST;
+const PRIMARY_PORT = (() => { const p = Number(process.env.SMTP_PORT); return Number.isFinite(p) ? p : 587; })();
+const PRIMARY_SECURE = String(process.env.SMTP_SECURE || "false") === "true"; // implicit TLS when true
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
 
 function makeTransport(port: number, secure: boolean) {
   const options: nodemailer.TransportOptions = {
@@ -54,22 +86,34 @@ function makeTransport(port: number, secure: boolean) {
     pool: false,
     tls: {
       rejectUnauthorized: String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED || "true") === "true"
-    }
+    },
+    logger: process.env.SMTP_DEBUG === 'true',
+    debug: process.env.SMTP_DEBUG === 'true'
   } as any; // cast to any to avoid over-narrowed union issues if type defs change
   return nodemailer.createTransport(options as any);
 }
 
-let transporter = makeTransport(PRIMARY_PORT, PRIMARY_SECURE);
+let transporter: nodemailer.Transporter | null = null;
+if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
+  try {
+    transporter = makeTransport(PRIMARY_PORT, PRIMARY_SECURE);
+  } catch (e) {
+    console.error('[email] Failed to initialize SMTP transporter:', e);
+  }
+} else {
+  console.log('[email] SMTP credentials not fully provided; will rely on API provider if available.');
+}
 
 async function sendMailWithFallback(to: string, subject: string, html: string) {
   try {
+    if (!transporter) throw new Error('SMTP transporter unavailable (missing SMTP_* env vars)');
     return await transporter.sendMail({ from: EMAIL_FROM, to, subject, html });
   } catch (err: any) {
     const code = err?.code || err?.errno || err?.responseCode;
     const isTimeout = code === 'ETIMEDOUT' || code === 'ESOCKET' || /timeout/i.test(String(err?.message || ''));
     const isConn = code === 'ECONNECTION' || code === 'ECONNREFUSED';
     // Attempt fallback only if using Gmail + implicit TLS (465) originally
-    if ((isTimeout || isConn) && SMTP_HOST === 'smtp.gmail.com' && PRIMARY_PORT === 465) {
+    if (transporter && (isTimeout || isConn) && SMTP_HOST === 'smtp.gmail.com' && PRIMARY_PORT === 465) {
       console.warn('[email] Primary SMTP connection failed (port 465). Trying STARTTLS fallback on 587...');
       try {
         transporter = makeTransport(587, false);
@@ -87,7 +131,78 @@ async function sendMailWithFallback(to: string, subject: string, html: string) {
 // Optionally verify connection at startup
 // transporter.verify().then(() => console.log("SMTP ready")).catch(err => console.error("SMTP verify failed:", err));
 
+// ---- API Provider helpers ----
+
+function httpsJson(url: string, method: string, headers: Record<string,string>, bodyObj: any): Promise<{status: number; body: string;}> {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = https.request({
+      method,
+      hostname: u.hostname,
+      path: u.pathname + u.search,
+      port: u.port || 443,
+      headers: { 'Content-Type': 'application/json', ...headers },
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode || 0, body: data }));
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(new Error('HTTPS request timeout')); });
+    req.write(JSON.stringify(bodyObj));
+    req.end();
+  });
+}
+
+async function sendViaResend(to: string, subject: string, html: string) {
+  const resp = await httpsJson('https://api.resend.com/emails', 'POST', {
+    Authorization: `Bearer ${RESEND_API_KEY}`
+  }, { from: EMAIL_FROM, to: [to], subject, html, text: htmlToText(html) });
+  if (resp.status >= 200 && resp.status < 300) return true;
+  throw new Error(`Resend API failed (${resp.status}): ${resp.body.slice(0,200)}`);
+}
+
+async function sendViaSendGrid(to: string, subject: string, html: string) {
+  const resp = await httpsJson('https://api.sendgrid.com/v3/mail/send', 'POST', {
+    Authorization: `Bearer ${SENDGRID_API_KEY}`
+  }, {
+    personalizations: [{ to: [{ email: to }] }],
+    from: { email: EMAIL_FROM.replace(/.*<([^>]+)>.*/, '$1') },
+    subject,
+    content: [
+      { type: 'text/plain', value: htmlToText(html) },
+      { type: 'text/html', value: html }
+    ]
+  });
+  if (resp.status === 202) return true;
+  throw new Error(`SendGrid API failed (${resp.status}): ${resp.body.slice(0,200)}`);
+}
+
 async function sendMail(to: string, subject: string, html: string) {
+  // Provider selection: explicit EMAIL_PROVIDER overrides detection
+  if (RESEND_API_KEY) {
+    console.log('[email] Using Resend provider');
+  } else if (SENDGRID_API_KEY) {
+    console.log('[email] Using SendGrid provider');
+  } else if (!transporter) {
+    console.warn('[email] No email provider (Resend/SendGrid) or SMTP credentials configured. Emails will fail.');
+  }
+  // Warn if using a gmail.com sender with an API provider (deliverability risk)
+  const senderDomainMatch = EMAIL_FROM.match(/<([^>]+)>/);
+  const senderAddress = (senderDomainMatch ? senderDomainMatch[1] : EMAIL_FROM).toLowerCase();
+  if ((RESEND_API_KEY || SENDGRID_API_KEY) && senderAddress.endsWith('@gmail.com')) {
+    console.warn('[email] WARNING: Using a gmail.com sender with an API provider; verify a custom domain for better deliverability.');
+  }
+  try {
+    if (EMAIL_PROVIDER === 'resend' || (RESEND_API_KEY && !EMAIL_PROVIDER && !SENDGRID_API_KEY)) {
+      return await sendViaResend(to, subject, html);
+    }
+    if (EMAIL_PROVIDER === 'sendgrid' || (SENDGRID_API_KEY && !EMAIL_PROVIDER)) {
+      return await sendViaSendGrid(to, subject, html);
+    }
+  } catch (apiErr) {
+    console.error('[email] API provider failed, falling back to SMTP:', apiErr);
+  }
   return sendMailWithFallback(to, subject, html);
 }
 

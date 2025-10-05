@@ -18,6 +18,7 @@ import { simpleRateLimit } from "./utils/rateLimit";
 import { BookCreateApiSchema } from "@shared/bookCreateApiSchema";
 import cors from "cors";
 import { awardExclusiveStoryBadge } from "@/lib/awardExclusiveStoryBadge";
+import * as nodemailer from "nodemailer";
 // -----------------------------------------------------------------------------
 // JWT Secret
 // -----------------------------------------------------------------------------
@@ -999,16 +1000,29 @@ app.post("/api/auth/forgot-password", forgotPasswordLimiter, async (req, res) =>
       })
       .where(eq(schema.users.id, user.id));
 
-    // email the RAW token (not the hash)
-    await sendPasswordResetEmail(
-      user.email,
-      rawToken,
-      user.firstName || user.username || "User"
-    );
-
-    return res
-      .status(200)
-      .json({ message: "If the email exists, a reset link has been sent" });
+    // email the RAW token (not the hash). If SMTP fails we still respond 200 to avoid user enumeration
+    try {
+      await sendPasswordResetEmail(
+        user.email,
+        rawToken,
+        user.firstName || user.username || "User"
+      );
+      return res
+        .status(200)
+        .json({ message: "If the email exists, a reset link has been sent" });
+    } catch (e: any) {
+      console.error("SMTP send error (password reset):", e?.message || e);
+      // Provide a fallback: include token ONLY if explicit env flag allows (for temporary debugging)
+      if (process.env.EXPOSE_PASSWORD_RESET_TOKEN === 'true') {
+        return res.status(200).json({
+          message: "Email delivery failed but token generated (debug mode)",
+          token: rawToken
+        });
+      }
+      return res.status(200).json({
+        message: "If the email exists, a reset link has been sent (delivery pending)",
+      });
+    }
   } catch (error) {
     console.error("Error sending password reset:", error);
     return res.status(500).json({ message: "Failed to send reset email" });
@@ -1080,6 +1094,31 @@ app.post("/api/auth/reset-password", async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// -----------------------------------------------------------------------------
+// SMTP Debug (optional) - guarded by ALLOW_SMTP_DEBUG env var and requires a ?key= query matching SMTP_DEBUG_KEY
+// -----------------------------------------------------------------------------
+if (process.env.ALLOW_SMTP_DEBUG === 'true') {
+  app.get('/api/debug/smtp', async (req, res) => {
+    try {
+      const supplied = req.query.key;
+      if (!process.env.SMTP_DEBUG_KEY || supplied !== process.env.SMTP_DEBUG_KEY) {
+        return res.status(403).json({ ok: false, error: 'Forbidden' });
+      }
+      const host = process.env.SMTP_HOST;
+      const port = Number(process.env.SMTP_PORT || '587');
+      const secure = String(process.env.SMTP_SECURE || 'false') === 'true';
+      const user = process.env.SMTP_USER;
+      const passSet = !!process.env.SMTP_PASS;
+      const transport = nodemailer.createTransport({ host, port, secure, auth: { user, pass: process.env.SMTP_PASS }, connectionTimeout: 8000, greetingTimeout: 6000, socketTimeout: 10000 });
+      const start = Date.now();
+      await transport.verify();
+      return res.json({ ok: true, ms: Date.now() - start, host, port, secure, user, passSet });
+    } catch (e: any) {
+      return res.status(500).json({ ok: false, error: e?.message || String(e) });
+    }
+  });
+}
   
 const router = express.Router();
 
