@@ -9,6 +9,7 @@ import path from "path";
 import { fileURLToPath } from 'url';
 import cors from "cors";
 import applySecurityHeaders, { getCSPHeader } from "./security";
+import { runStartupSeed } from "./startupSeed";
 // Environment configuration for deployment
 const host = process.env.HOST || "0.0.0.0";
 const port = parseInt(process.env.PORT || "3000", 10);
@@ -148,6 +149,9 @@ app.use((req, res, next) => {
     } else {
       serveStatic(app);
     }
+
+    // Perform idempotent startup seed (non-blocking)
+    runStartupSeed().catch(e => log(`Startup seed failed: ${(e as Error).message}`, 'seed'));
 
     // Start the server
     server.listen(port, host, () => {

@@ -3,12 +3,17 @@
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "tsx server/index.ts",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "cross-env NODE_ENV=production node dist/index.js",
     "preview": "vite preview",
     "prod": "npm run build && npm run start",
+    "migrate": "drizzle-kit migrate --config=./drizzle.config.ts",
+    "deploy:build": "npm run build",
     "check": "tsc",
     "db:push": "drizzle-kit push --force --config=./drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config=./drizzle.config.ts",
@@ -16,7 +21,7 @@
     "db:seed": "tsx db/seed.ts",
     "seed:exclusive": "tsx db/seed-exclusive-books.ts",
     "seed:exbadges": "tsx db/exclusive_story_badges.ts",
-    "postbuild": "npm run db:push"
+    "postbuild": ""
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -66,6 +71,7 @@
     "cloudinary": "^1.41.3",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
+    "compression": "^1.8.1",
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.5",
     "date-fns": "^3.6.0",
@@ -117,6 +123,7 @@
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
     "@tailwindcss/typography": "^0.5.15",
     "@types/busboy": "^1.5.4",
+    "@types/compression": "^1.7.0",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/cors": "^2.8.19",
     "@types/dotenv": "^6.1.1",
@@ -134,8 +141,7 @@
     "@types/ws": "^8.5.13",
     "cross-env": "^7.0.3",
     "tsx": "^4.19.1",
-    "typescript": "^5.9.2",
-    "@types/compression": "^1.7.0"
+    "typescript": "^5.9.2"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"

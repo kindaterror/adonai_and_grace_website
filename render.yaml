@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: adonai-and-grace
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm run start
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Add real secrets below (example keys):
+      # - key: DATABASE_URL
+      #   sync: false
+      # - key: SESSION_SECRET
+      #   generateValue: true
+      # - key: SENDGRID_API_KEY
+      #   sync: false
+    # Health check path (uncomment if you add one)
+    # healthCheckPath: /api/health
