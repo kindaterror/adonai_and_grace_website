@@ -136,6 +136,10 @@ app.use((req, res, next) => {
     runStartupSeed().catch(e => log(`Startup seed failed: ${(e as Error).message}`, 'seed'));
 
     // Start the server
+    log(`Attempting to listen on ${host}:${port}`);
+    server.on('error', (err) => {
+      console.error('HTTP server error before listen:', err);
+    });
     server.listen(port, host, () => {
       log(`Server running on http://${host}:${port}`);
       log(`Environment: ${process.env.NODE_ENV || 'development'}`);
