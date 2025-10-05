@@ -135,6 +135,8 @@ export function PageForm({
   const [lastImageChange, setLastImageChange] = useState(0);
   const saveTimerRef = useRef<number | null>(null);
   const latestPayloadRef = useRef<PageFormValues | null>(null);
+  const lastEditRef = useRef<number>(Date.now());
+  const INACTIVITY_MS = 5000; // user considered "done" after 5s idle
 
   // == Effects ==
   useEffect(() => {
@@ -180,11 +182,10 @@ export function PageForm({
   }, [transformed, fallbackRaw]);
 
   // Unified debounced auto-save (reduces flicker / re-render storms)
-  const queueSave = useCallback((showNotification: boolean) => {
-    if (isInitialLoad) return;
+  const buildPayload = useCallback((showNotification: boolean): PageFormValues | null => {
     const v = form.getValues();
-    if (!v.content || !v.content.trim()) return;
-    const payload: PageFormValues = {
+    if (!v.content || !v.content.trim()) return null;
+    return {
       id: initialValues?.id,
       pageNumber,
       title: v.title ?? '',
@@ -194,21 +195,40 @@ export function PageForm({
       questions: questions.length > 0 ? questions : undefined,
       showNotification
     };
+  }, [form, initialValues?.id, pageNumber, questions]);
+
+  const flushSave = useCallback(() => {
+    if (isInitialLoad) return;
+    if (saveTimerRef.current) { window.clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+    const payload = latestPayloadRef.current || buildPayload(true);
+    if (payload) {
+      onSave(payload);
+      setHasUnsavedChanges(false);
+    }
+  }, [buildPayload, isInitialLoad, onSave]);
+
+  const queueSave = useCallback((showNotification: boolean) => {
+    if (isInitialLoad) return;
+    const payload = buildPayload(showNotification);
+    if (!payload) return;
     latestPayloadRef.current = payload;
+    lastEditRef.current = Date.now();
     setHasUnsavedChanges(true);
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-    // Longer debounce for typing, shorter when structural changes (questions/image) set showNotification
-    const delay = showNotification ? 700 : 1400;
     saveTimerRef.current = window.setTimeout(() => {
-      const finalPayload = latestPayloadRef.current;
-      if (finalPayload) {
-        onSave(finalPayload);
+      // Only save if we have been idle for INACTIVITY_MS
+      const idleFor = Date.now() - lastEditRef.current;
+      if (idleFor >= INACTIVITY_MS) {
+        flushSave();
+      } else {
+        // reschedule remaining time
+        const remaining = INACTIVITY_MS - idleFor + 50;
+        saveTimerRef.current = window.setTimeout(() => flushSave(), remaining);
       }
-      setHasUnsavedChanges(false);
-    }, delay);
-  }, [form, initialValues?.id, isInitialLoad, onSave, pageNumber, questions]);
+    }, INACTIVITY_MS);
+  }, [buildPayload, flushSave, isInitialLoad, INACTIVITY_MS]);
 
-  // Watch content/title/image fields changes
+  // Watch content/title/image fields changes (idle-based autosave)
   useEffect(() => {
     const sub = form.watch((_vals, info) => {
       if (info?.type === 'change') queueSave(false);
@@ -220,8 +240,7 @@ export function PageForm({
   useEffect(() => {
     if (isInitialLoad) return;
     if (questions) queueSave(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [questions]);
+  }, [questions, isInitialLoad, queueSave]);
 
   // Re-queue when image changed explicitly
   useEffect(() => {
@@ -256,7 +275,7 @@ export function PageForm({
       setHasUnsavedChanges(true);
       setLastImageChange(Date.now());
 
-      queueSave(true);
+  queueSave(true);
 
       toast({ title: 'Image uploaded', description: 'Page image uploaded successfully.' });
     } catch (err: any) {
@@ -278,7 +297,7 @@ export function PageForm({
     setHasUnsavedChanges(true);
     setLastImageChange(Date.now());
 
-    queueSave(true);
+  queueSave(true);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
