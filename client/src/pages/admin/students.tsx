@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "@/lib/motionShim";
 import Header from "@/components/layout/Header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";

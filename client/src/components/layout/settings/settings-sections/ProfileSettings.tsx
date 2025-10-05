@@ -11,7 +11,7 @@ import {
   Trash2,
   Shield
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "@/lib/motionShim";
 
 type ProfileSettingsProps = {
   userRole: "admin" | "teacher" | "student";

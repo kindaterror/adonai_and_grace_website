@@ -120,6 +120,8 @@ export function getCSPHeader(opts: BuildCSPOptions = {}): string {
   const directives: Record<string, string[]> = {
     "default-src": ["'self'"],
     "script-src": ["'self'"],
+    // Forbid inline event handler attributes explicitly (CSP3). Older browsers ignore this.
+    "script-src-attr": ["'none'"],
     // Allow external Google Fonts stylesheet + inline (dev) + self-hosted styles
     // We explicitly add https://fonts.googleapis.com below (prod + dev) so the link tag works under CSP.
   // Radix UI + some component libraries inject inline style attributes. To avoid
@@ -142,6 +144,12 @@ export function getCSPHeader(opts: BuildCSPOptions = {}): string {
     "object-src": ["'none'"],
     // Defensive: disallow embedding other frames unless explicitly added later
     "frame-src": ["'none'"],
+    // Older directive aliasing potential child browsing contexts (defense in depth)
+    "child-src": ["'none'"],
+    // Explicit worker sources (if future workers added they must come from self or blob)
+    "worker-src": ["'self'", "blob:"],
+    // App manifest (allow self if you later add it)
+    "manifest-src": ["'self'"],
   };
 
   // Allow cloudinary and local dev host for images and connect

@@ -53,7 +53,7 @@ import { AvatarImg, BookCover } from "@/components/ui/media";
 import { apiRequest } from "@/lib/queryClient";
 
 // ✨ animations
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "@/lib/motionShim";
 const fadeIn = { hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, transition: { duration: 0.35 } } };
 const fadeInFast = { hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0, transition: { duration: 0.25 } } };
 const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } };

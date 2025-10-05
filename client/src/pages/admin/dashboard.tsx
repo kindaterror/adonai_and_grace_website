@@ -14,7 +14,7 @@ import {
   GraduationCap,
   Shield,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion } from "@/lib/motionShim";
 
 // Small animation presets (UI-only; no data logic touched)
 const fadeIn = {

@@ -18,7 +18,7 @@ import {
   FormMessage,
   FormDescription
 } from '@/components/ui/form';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from '@/lib/motionShim';
 
 /** ================= Cloudinary helpers (Vite + Next-safe) ================= */
 const cloud =

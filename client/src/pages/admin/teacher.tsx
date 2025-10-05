@@ -39,7 +39,7 @@ import { toast } from "@/hooks/use-toast";
 import { AvatarImg } from "@/components/ui/media";
 
 // ✨ animations
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "@/lib/motionShim";
 
 // == TYPES ==
 type Teacher = {

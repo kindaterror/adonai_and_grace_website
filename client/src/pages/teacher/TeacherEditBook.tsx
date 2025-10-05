@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import Header from "@/components/layout/Header";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "@/lib/motionShim";
 
 /* =================== Helpers (Cloudinary upload) =================== */
 function getToken() {

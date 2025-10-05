@@ -7,7 +7,9 @@ import { ChevronLeft, ChevronRight, Home, Volume2, VolumeX, Check, Maximize, Min
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import Live2DViewer from "@/components/Live2DViewer";
+// Lazy Live2D: defer heavy model runtime until user explicitly enables it
+import { lazy, Suspense } from 'react';
+const Live2DViewerLazy = lazy(() => import('@/components/Live2DViewer'));
 import backgroundVideo from '@/assets/bookanimation/bg.mp4';
 import '@/pages/student/stories/2danimatedstorybook.css';
 import '@/pages/student/stories/live2d.css';
@@ -80,6 +82,8 @@ export default function NecklaceCombStory() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isStoryComplete, setIsStoryComplete] = useState(false);
   const [flipRightNow, setFlipRightNow] = useState(false);
+  // Defer loading heavy Live2D runtime until user explicitly enables per page view
+  const [enableLive2D, setEnableLive2D] = useState(false);
 
   // Loader + intro
   const [isBooting, setIsBooting] = useState(true);
@@ -392,23 +396,35 @@ export default function NecklaceCombStory() {
           />
         ) : page.live2dModelUrl ? (
           <div className="nc-live2d">
-            <Live2DViewer
-              modelUrl={page.live2dModelUrl}
-              entryMotion={page.live2dEntryMotion}
-              idleMotion={page.live2dIdleMotion}
-              scale={page.live2dScale}
-              fitPadding={page.live2dFitPadding}
-              fitMode={page.live2dFitMode as any}
-              offsetX={page.live2dOffsetX}
-              offsetY={page.live2dOffsetY}
-              bgModelUrl={page.live2dBgModelUrl}
-              bgEntryMotion={page.live2dBgEntryMotion}
-              bgIdleMotion={page.live2dBgIdleMotion}
-              bgScale={page.live2dBgScale}
-              bgOffsetX={page.live2dBgOffsetX}
-              bgOffsetY={page.live2dBgOffsetY}
-              bgFitMode="cover"
-            />
+            {enableLive2D ? (
+              <Suspense fallback={<div className="text-xs text-gray-400 p-4">Loading animation…</div>}>
+                <Live2DViewerLazy
+                  modelUrl={page.live2dModelUrl}
+                  entryMotion={page.live2dEntryMotion}
+                  idleMotion={page.live2dIdleMotion}
+                  scale={page.live2dScale}
+                  fitPadding={page.live2dFitPadding}
+                  fitMode={page.live2dFitMode as any}
+                  offsetX={page.live2dOffsetX}
+                  offsetY={page.live2dOffsetY}
+                  bgModelUrl={page.live2dBgModelUrl}
+                  bgEntryMotion={page.live2dBgEntryMotion}
+                  bgIdleMotion={page.live2dBgIdleMotion}
+                  bgScale={page.live2dBgScale}
+                  bgOffsetX={page.live2dBgOffsetX}
+                  bgOffsetY={page.live2dBgOffsetY}
+                  bgFitMode="cover"
+                />
+              </Suspense>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEnableLive2D(true)}
+                className="w-full h-full flex items-center justify-center text-xs text-gray-500 hover:text-gray-700 transition"
+              >
+                Enable interactive animation
+              </button>
+            )}
           </div>
         ) : (
           <img src={page.illustration} alt="" className="nc-illustration" width={1280} height={720} loading="lazy" />

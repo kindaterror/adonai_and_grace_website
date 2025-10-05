@@ -56,7 +56,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { BookCover } from "@/components/ui/media";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "@/lib/motionShim";
 
 // == Animation presets (UI-only) ==
 const fadeIn = {

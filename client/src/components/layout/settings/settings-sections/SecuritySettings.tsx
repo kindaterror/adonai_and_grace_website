@@ -9,7 +9,7 @@ import {
   CheckCircle,
   AlertCircle
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "@/lib/motionShim";
 
 type SecuritySettingsProps = {
   userRole: "admin" | "teacher" | "student";

@@ -25,19 +25,7 @@ app.set("trust proxy", 1);
 // Remove (where possible) the generic Server header sometimes added by upstream
 app.use((req, res, next) => { try { res.removeHeader('Server'); } catch {} next(); });
 
-// Redirect plain HTTP to HTTPS in production (Render sets X-Forwarded-Proto)
-if (process.env.NODE_ENV === 'production') {
-  app.use((req, res, next) => {
-    try {
-      const xfProto = req.headers['x-forwarded-proto'];
-      if (xfProto && typeof xfProto === 'string' && xfProto.split(',')[0] !== 'https') {
-        const host = req.headers.host;
-        if (host) return res.redirect(301, `https://${host}${req.url}`);
-      }
-    } catch {}
-    next();
-  });
-}
+// (Moved below CSP middleware so redirect responses also carry security headers)
 
 // Security headers baseline
 app.use(helmet({
@@ -74,6 +62,23 @@ app.use((req, res, next) => {
   } catch {}
   next();
 });
+
+// Redirect plain HTTP to HTTPS in production (after headers so redirect also carries them)
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    try {
+      const xfProto = req.headers['x-forwarded-proto'];
+      if (xfProto && typeof xfProto === 'string' && xfProto.split(',')[0] !== 'https') {
+        const hostHeader = req.headers.host;
+        if (hostHeader) {
+          // Preserve method? For GET/HEAD a 301 is fine; others we could use 308. Simplicity: 301.
+          return res.redirect(301, `https://${hostHeader}${req.url}`);
+        }
+      }
+    } catch {}
+    next();
+  });
+}
 
 // JSON body parser with validation
 app.use(express.json({

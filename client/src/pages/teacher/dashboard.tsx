@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { jwtDecode } from "jwt-decode";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "@/lib/motionShim";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import {
