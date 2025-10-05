@@ -1,0 +1,73 @@
+/* ==========================================================================
+   VIDEO — match illustration / Live2D sizing & rounded frame
+   ========================================================================== */
+
+/* Base sizing: mirror .nc-illustration (falls back if CSS vars aren't present) */
+.nc-video {
+  width: 100%;
+  height: clamp(var(--illus-min, 220px), var(--illus-vh, 28vh), var(--illus-max, 290px));
+  display: block;           /* remove inline gap */
+  object-fit: cover;        /* fill like images */
+  border-radius: 18px;
+  overflow: hidden;
+  background: #000;         /* pleasant while first frame loads */
+  -webkit-user-select: none;
+          user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  transform: translateZ(0); /* reduce flicker on some GPUs */
+}
+
+/* Any <video> inside the frame should be block-level and full width */
+.nc-imageFrame video {
+  display: block;
+  width: 100%;
+}
+
+/* Fullscreen: keep proportions similar to Live2D fullscreen card */
+.book-fullscreen-mode .nc-video {
+  height: clamp(320px, 42vh, 640px);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+/* iOS/Safari: hide overlay play button & extra controls when controls=false */
+.nc-video::-webkit-media-controls-start-playback-button { display: none !important; }
+.nc-video::-webkit-media-controls-enclosure { display: none !important; }
+
+/* If you ever use a poster, be sure it clips to the rounded corners */
+.nc-video[poster] {
+  background-position: center;
+  background-size: cover;
+}
+
+/* Optional: if you decide to give the frame a white edge like Live2D,
+   you can apply it to the container. (nc-imageFrame already has it in your page CSS)
+   This is here just for parity & future reuse: */
+.popup-book-wrapper .nc-imageFrame {
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.nc-bg-video {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.nc-video-bg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(6px) brightness(1.05) saturate(1.08);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.nc-bg-video {
+
+  /* ✅ Add blur and optional brightness tweaks */
+  filter: blur(8px) brightness(1.05) saturate(1.05);
+ 
+}

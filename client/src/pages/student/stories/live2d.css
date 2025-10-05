@@ -1,0 +1,58 @@
+/* ==========================================================================
+   LIVE2D VIEWER — match illustration card exactly (white edge via frame)
+   ========================================================================== */
+
+/* The Live2D frame: same sizing & look as illustration frames, no ribbon */
+.popup-book-wrapper .nc-imageFrame.live2d-frame {
+  /* size & position — mirror 2danimatedstorybook.css */
+  width: var(--illus-wide) !important;
+  height: clamp(var(--illus-min), var(--illus-vh), var(--illus-max)) !important;
+  margin: 0 auto !important;
+
+  /* card look */
+  background: #fff !important;           /* white edge */
+  background-image: none !important;     /* remove ribbon stripe */
+  border-radius: 18px !important;
+  box-shadow:
+    0 8px 24px rgba(26,35,126,.12),
+    0 3px 12px rgba(26,35,126,.10) !important;
+
+  /* IMPORTANT: no inner padding, the edge is just the white background */
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Live2D container: fill the frame exactly (no extra margin/edge here) */
+.popup-book-wrapper .nc-imageFrame.live2d-frame > .nc-live2d {
+  width: 100% !important;
+  height: 100% !important;
+  position: relative !important;
+  border-radius: inherit !important;
+  background: transparent !important;
+  box-shadow: none !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+}
+
+/* Fullscreen: match illustration fullscreen sizing */
+.book-fullscreen-mode .nc-imageFrame.live2d-frame {
+  width: 98% !important;
+  height: clamp(320px, 42vh, 640px) !important;
+  border-radius: 20px !important;
+}
+
+/* PIXI canvas fills & clips to the rounded frame */
+.live2d-canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: inherit !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+  user-select: none !important;
+  background: transparent !important;
+}

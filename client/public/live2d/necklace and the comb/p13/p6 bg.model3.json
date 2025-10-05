@@ -1,0 +1,17 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "p6 bg.moc3",
+    "Textures": ["p6 bg.4096/texture_00.png"],
+    "DisplayInfo": "p6 bg.cdi3.json",
+    "Motions": {
+      "entry_animation15bg": [
+        { "File": "entry_animation15bg.motion3.json", "FadeInTime": 0.3, "FadeOutTime": 0.3 }
+      ],
+      "loopbg": [
+        { "File": "loopbg.motion3.json", "FadeInTime": 0.3, "FadeOutTime": 0.3 }
+      ]
+    }
+  },
+  "Groups": []
+}

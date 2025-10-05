@@ -1,0 +1,50 @@
+{
+	"Version": 3,
+	"Parameters": [
+		{
+			"Id": "ParamAngleX",
+			"GroupId": "",
+			"Name": "Angle X"
+		},
+		{
+			"Id": "ParamAngleY",
+			"GroupId": "",
+			"Name": "Angle Y"
+		},
+		{
+			"Id": "ParamAngleZ",
+			"GroupId": "",
+			"Name": "Angle Z"
+		},
+		{
+			"Id": "Param",
+			"GroupId": "",
+			"Name": "cloud"
+		},
+		{
+			"Id": "Param2",
+			"GroupId": "",
+			"Name": "cloud"
+		},
+		{
+			"Id": "Param3",
+			"GroupId": "",
+			"Name": "Parameter5"
+		}
+	],
+	"ParameterGroups": [],
+	"Parts": [
+		{
+			"Id": "Part",
+			"Name": "p6 bg.psd"
+		},
+		{
+			"Id": "bg",
+			"Name": "bg"
+		},
+		{
+			"Id": "bg2",
+			"Name": "bg"
+		}
+	]
+}
