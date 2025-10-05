@@ -9,58 +9,50 @@ import { fileURLToPath } from 'url';
 import cors from "cors";
 import applySecurityHeaders, { getCSPHeader } from "./security";
 import { runStartupSeed } from "./startupSeed";
+
 // Environment configuration for deployment
-const host = process.env.HOST || "0.0.0.0";
+const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : (process.env.HOST || '0.0.0.0');
 const port = parseInt(process.env.PORT || "3000", 10);
 
 console.log(`Starting server on ${host}:${port}`);
 console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 
 const app = express();
-
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 
-// Apply Helmet with a conservative base configuration. We still set a CSP
-// header manually below to allow fine-grained tuning in `security.ts`.
-app.use(
-  helmet({
-    crossOriginResourcePolicy: false,
-    contentSecurityPolicy: false, // we will set CSP header manually
-  })
-);
+// Security headers baseline
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  contentSecurityPolicy: false,
+}));
 
-// Attempt to enable gzip compression (non-blocking)
+// Optional compression (non-fatal if missing)
 (async () => {
   try {
-    const mod: any = await import('compression').catch(() => null);
-    if (mod && typeof mod.default === 'function') {
-      app.use(mod.default());
-    } else {
-      log('compression module not found – continuing without gzip', 'startup');
-    }
+    const compressionMod: any = await import('compression');
+    const compression = compressionMod.default || compressionMod;
+    app.use(compression());
+    log('Compression middleware enabled', 'startup');
   } catch (e) {
-    log(`Failed to enable compression: ${(e as Error).message}`, 'startup');
+    log(`Compression not loaded: ${(e as Error).message}`, 'startup');
   }
 })();
 
-// Apply our lightweight security headers and CSP generator
+// Apply our custom security headers & CSP
 applySecurityHeaders(app);
 app.use((req, res, next) => {
   try {
     const csp = getCSPHeader();
     if (csp) res.setHeader("Content-Security-Policy", csp);
-    // HSTS for production only
     if (process.env.NODE_ENV === "production") {
       res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
     }
-  } catch (e) {
-    // swallow header errors to avoid crashing
-  }
+  } catch {}
   next();
 });
 
-// Configure JSON body parser with increased limits for large images
+// JSON body parser with validation
 app.use(express.json({
   limit: '100mb',
   strict: true,
@@ -70,44 +62,24 @@ app.use(express.json({
     } catch (e: any) {
       log(`Invalid JSON received: ${e.message || 'Unknown error'}`);
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        message: 'Invalid JSON format',
-        error: e.message || 'Unknown error'
-      }));
+      res.end(JSON.stringify({ message: 'Invalid JSON format', error: e.message || 'Unknown error' }));
       throw new Error('Invalid JSON format');
     }
   }
 }));
 
-// Updated URL-encoded parser with increased limits
-app.use(express.urlencoded({ 
-  extended: false, 
-  limit: '100mb',
-  parameterLimit: 100000
-}));
-
+// URL-encoded parser
+app.use(express.urlencoded({ extended: false, limit: '100mb', parameterLimit: 100000 }));
 
 // ESM __dirname replacement
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// Serve static files (deny dotfiles to avoid accidental exposure)
+// Serve server/public
 app.use(express.static(path.join(__dirname, "public"), { dotfiles: 'deny', maxAge: '7d' }));
-
-/* ----------------- ADDED: serve client/public assets (Live2D) ----------------- */
-// Absolute path to client/public
+// Serve client/public assets (built-time assets copied by Vite build or static extras)
 const clientPublic = path.resolve(__dirname, "..", "client", "public");
-
-// Serve everything in client/public (so /images, etc. work too) with caching
 app.use(express.static(clientPublic, { fallthrough: true, dotfiles: 'deny', maxAge: '7d' }));
-
-// Ensure /live2d/* is always served as real files (not rewritten by SPA fallback)
 app.use("/live2d", express.static(path.join(clientPublic, "live2d"), { fallthrough: false, dotfiles: 'deny' }));
-
-// Ensure the Cubism runtime is always served
-app.use("/live2dcubismcore.min.js",
-  express.static(path.join(clientPublic, "live2dcubismcore.min.js"), { fallthrough: false, dotfiles: 'deny' })
-);
-/* ----------------------------------------------------------------------------- */
+app.use("/live2dcubismcore.min.js", express.static(path.join(clientPublic, "live2dcubismcore.min.js"), { fallthrough: false, dotfiles: 'deny' }));
 
 // Request logging middleware
 app.use((req, res, next) => {
