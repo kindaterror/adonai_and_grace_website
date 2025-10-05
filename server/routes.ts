@@ -305,6 +305,16 @@ export function setupRoutes(app: Express): Server {
   function escapeLike(input: string) {
     return input.replace(/[\\%_]/g, ch => `\\${ch}`);
   }
+
+  // Lightweight health endpoint (no auth) so we can easily verify headers in prod
+  app.get('/healthz', (req, res) => {
+    res.status(200).json({
+      ok: true,
+      env: process.env.NODE_ENV || 'development',
+      time: new Date().toISOString(),
+      note: 'Use this endpoint to inspect security headers (CSP, HSTS, etc.)',
+    });
+  });
   // NOTE: do NOT serve local /uploads here since we’re using Cloudinary now.
 app.use(cors(corsOptions));
 // ensure preflight gets headers

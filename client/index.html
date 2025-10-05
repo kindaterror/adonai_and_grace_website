@@ -5,10 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="description" content="Ilaw ng Bayan Learning Institute – Illuminating minds and empowering futures with quality education and interactive story experiences." />
     <meta name="theme-color" content="#1A237E" />
-    <!-- Short-term CSP fallback: if server headers are not applied (e.g. some dev setups),
-      this meta tag ensures media from Cloudinary and data/blob are allowed for now.
-      Long-term: prefer the server-set Content-Security-Policy header in `server/security.ts`. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:*; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob: https://res.cloudinary.com; media-src 'self' data: blob: https://res.cloudinary.com; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' ws://localhost:* http://localhost:* https://res.cloudinary.com;">
+    <!-- CSP is now provided strictly via server headers (see server/security.ts). -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Consolidated font request with display=swap for faster paint -->

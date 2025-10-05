@@ -1,4 +1,5 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
+import crypto from 'crypto';
 
 /**
  * Minimal security helpers placeholder.
@@ -107,11 +108,13 @@ export default applySecurityHeaders;
 // permissive for development (allows localhost and 'unsafe-inline' if NODE_ENV
 // is not production) and more strict for production. Adjust as you add
 // third-party resources (Cloudinary, analytics, etc.).
-export function getCSPHeader(): string {
+export interface BuildCSPOptions { nonce?: string }
+export function getCSPHeader(opts: BuildCSPOptions = {}): string {
   const isProd = process.env.NODE_ENV === "production";
   const additionalHostsRaw = process.env.CSP_ADDITIONAL_HOSTS || '';
   const additionalHosts = additionalHostsRaw.split(',').map(s => s.trim()).filter(Boolean);
   const enableReportEndpoint = (process.env.CSP_ENABLE_REPORT_ENDPOINT || 'false').toLowerCase() === 'true';
+  const nonce = opts.nonce;
 
   // Base directives
   const directives: Record<string, string[]> = {
@@ -123,7 +126,8 @@ export function getCSPHeader(): string {
   // widespread CSP violations we allow 'unsafe-inline' for styles. If you later
   // refactor to eliminate inline styles, you can remove 'unsafe-inline' and
   // move styles into stylesheet files.
-  "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+  // We will include a nonce in production instead of 'unsafe-inline'. During dev we still allow inline for HMR.
+  "style-src": ["'self'", "https://fonts.googleapis.com"],
     "img-src": ["'self'", "data:", "blob:"],
     "connect-src": ["'self'"],
   // media-src controls allowed sources for <audio> and <video>
@@ -169,13 +173,17 @@ export function getCSPHeader(): string {
 
   // In development allow a few relaxations for HMR and quick prototyping.
   if (!isProd) {
-  directives["script-src"].push("'unsafe-eval'", "'unsafe-inline'", "http://localhost:*");
-  directives["style-src"].push("'unsafe-inline'", "http://localhost:*");
+    directives["script-src"].push("'unsafe-eval'", "'unsafe-inline'", "http://localhost:*");
+    directives["style-src"].push("'unsafe-inline'", "http://localhost:*");
     directives["connect-src"].push("ws://localhost:*", "http://localhost:*");
   } else {
     // Production tightening: disallow unsafe-inline/eval and add upgrade directive
     // Consider adding nonces for inline scripts if you must allow them.
     directives["upgrade-insecure-requests"] = [];
+    if (nonce) {
+      directives["script-src"].push(`'nonce-${nonce}'`);
+      directives["style-src"].push(`'nonce-${nonce}'`);
+    }
     if (enableReportEndpoint) {
       // Report to our local endpoint; browsers will send JSON POSTs here when a
       // policy violation occurs. This should be protected in prod (rate-limited

@@ -8,6 +8,7 @@ import path from "path";
 import { fileURLToPath } from 'url';
 import cors from "cors";
 import applySecurityHeaders, { getCSPHeader } from "./security";
+import crypto from 'crypto';
 import { runStartupSeed } from "./startupSeed";
 
 // Environment configuration for deployment
@@ -56,16 +57,19 @@ app.use(helmet({
   }
 })();
 
-// Apply our custom security headers & CSP
+// Apply our custom security headers & CSP with per-request nonce
 applySecurityHeaders(app);
 app.use((req, res, next) => {
   try {
-    const csp = getCSPHeader();
+    // Generate a base64 nonce per request for any inline (script/style) we intentionally allow
+    const nonce = crypto.randomBytes(16).toString('base64');
+    (res as any).locals = (res as any).locals || {};
+    (res as any).locals.cspNonce = nonce;
+    const csp = getCSPHeader({ nonce });
     if (csp) res.setHeader("Content-Security-Policy", csp);
     if (process.env.NODE_ENV === "production") {
       res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
     }
-    // Opt-in modern isolation & disable legacy features (adjust as needed)
     res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=(), fullscreen=(self)");
   } catch {}
   next();
