@@ -1,7 +1,6 @@
 import dotenv from "dotenv";
 dotenv.config();
 import express, { type Request, Response, NextFunction } from "express";
-import compression from 'compression';
 import helmet from "helmet";
 import { setupRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
@@ -31,8 +30,19 @@ app.use(
   })
 );
 
-// Enable gzip compression for responses (small, safe middleware)
-app.use(compression());
+// Attempt to enable gzip compression (non-blocking)
+(async () => {
+  try {
+    const mod: any = await import('compression').catch(() => null);
+    if (mod && typeof mod.default === 'function') {
+      app.use(mod.default());
+    } else {
+      log('compression module not found – continuing without gzip', 'startup');
+    }
+  } catch (e) {
+    log(`Failed to enable compression: ${(e as Error).message}`, 'startup');
+  }
+})();
 
 // Apply our lightweight security headers and CSP generator
 applySecurityHeaders(app);
