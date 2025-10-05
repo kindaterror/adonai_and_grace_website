@@ -44,6 +44,8 @@ import {
 } from "@/lib/stories/checkpointClient";
 
 import { markBookComplete as markBookCompleteAPI } from "@/lib/clients/completeClient";
+import { queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 /* ===== meta ===== */
 const BOOK_SLUG = "sun-moon";
@@ -150,6 +152,8 @@ function withBase(path: string) {
 
 export default function SunMoonStory() {
   const { lang, setLang } = useLang(); // NEW
+  const { toast } = useToast();
+  const completionHandledRef = useRef(false);
   const [spreadStart, setSpreadStart] = useState(0);
   const [rightUnlocked, setRightUnlocked] = useState(false);
   const [pendingSide, setPendingSide] = useState<null | "left" | "right">(null);
@@ -302,7 +306,18 @@ export default function SunMoonStory() {
 
     if (rightIndex >= storyPages.length) {
       setIsStoryComplete(true);
-      markBookCompleteAPI(BOOK_ID ?? BOOK_SLUG).catch(() => {});
+      if (!completionHandledRef.current) {
+        completionHandledRef.current = true;
+        (async () => {
+          try {
+            const resp = await markBookCompleteAPI(BOOK_ID ?? BOOK_SLUG);
+            if (resp?.awardedBadge?.badgeName) {
+              toast({ title: "Badge Earned!", description: resp.awardedBadge.badgeName });
+            }
+          } catch {}
+          queryClient.invalidateQueries({ queryKey: ["earned-badges"] });
+        })();
+      }
       saveCheckpoint(true).catch(() => {});
       return;
     }
@@ -327,7 +342,18 @@ export default function SunMoonStory() {
         const nextLeft = spreadStart + 2;
         if (nextLeft >= storyPages.length) {
           setIsStoryComplete(true);
-          markBookCompleteAPI(BOOK_ID ?? BOOK_SLUG).catch(() => {});
+          if (!completionHandledRef.current) {
+            completionHandledRef.current = true;
+            (async () => {
+              try {
+                const resp = await markBookCompleteAPI(BOOK_ID ?? BOOK_SLUG);
+                if (resp?.awardedBadge?.badgeName) {
+                  toast({ title: "Badge Earned!", description: resp.awardedBadge.badgeName });
+                }
+              } catch {}
+              queryClient.invalidateQueries({ queryKey: ["earned-badges"] });
+            })();
+          }
           saveCheckpoint(true).catch(() => {});
         } else {
           setSpreadStart(nextLeft);
@@ -392,7 +418,18 @@ export default function SunMoonStory() {
         const nextLeft = spreadStart + 2;
         if (nextLeft >= storyPages.length) {
           setIsStoryComplete(true);
-          markBookCompleteAPI(BOOK_ID ?? BOOK_SLUG).catch(() => {});
+          if (!completionHandledRef.current) {
+            completionHandledRef.current = true;
+            (async () => {
+              try {
+                const resp = await markBookCompleteAPI(BOOK_ID ?? BOOK_SLUG);
+                if (resp?.awardedBadge?.badgeName) {
+                  toast({ title: "Badge Earned!", description: resp.awardedBadge.badgeName });
+                }
+              } catch {}
+              queryClient.invalidateQueries({ queryKey: ["earned-badges"] });
+            })();
+          }
           saveCheckpoint(true).catch(() => {});
         } else {
           setSpreadStart(nextLeft);

@@ -120,7 +120,7 @@ export default function AddTeacher() {
             <div className="bg-ilaw-navy rounded-2xl p-6 text-white shadow-xl mb-6">
               <div className="flex items-center justify-center mb-4">
                 <GraduationCap className="h-8 w-8 text-ilaw-gold mr-3" />
-                <span className="text-lg font-heading font-bold text-ilaw-gold">ILAW NG BAYAN LEARNING INSTITUTE</span>
+                <span className="text-lg font-heading font-bold text-ilaw-gold">ADONAI AND GRACE INC.</span>
               </div>
               <h1 className="text-3xl font-heading font-bold mb-2">Add New Teacher 👩‍🏫</h1>
               <p className="text-lg text-blue-100">Expand our educational team with qualified educators</p>

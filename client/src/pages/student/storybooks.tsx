@@ -76,7 +76,7 @@ export default function Storybooks() {
               <BookOpen className="h-10 w-10 mr-4" />
               <div>
                 <span className="text-sm font-sans font-bold uppercase tracking-wide opacity-80">
-                  Ilaw ng Bayan Learning Institute
+                  Adonai And Grace Inc.
                 </span>
               </div>
             </div>

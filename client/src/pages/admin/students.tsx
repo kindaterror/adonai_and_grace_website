@@ -423,7 +423,7 @@ return (
           <motion.div variants={fadeInUp} className="flex items-center justify-center mb-2">
             <GraduationCap className="h-8 w-8 text-ilaw-gold mr-3" />
             <span className="text-lg text-ilaw-gold">
-              ILAW NG BAYAN LEARNING INSTITUTE
+              ADONAI AND GRACE INC.
             </span>
           </motion.div>
           <motion.h1

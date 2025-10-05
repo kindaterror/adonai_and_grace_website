@@ -132,7 +132,7 @@ function TeacherBookDetails() {
                 <motion.div variants={fadeInUp} className="flex items-center mb-2">
                   <BookOpen className="h-8 w-8 text-ilaw-gold mr-3" />
                   <span className="text-sm font-sans font-bold uppercase tracking-wider text-white/80">
-                    Ilaw ng Bayan Learning Institute
+                    Adonai And Grace Inc.
                   </span>
                 </motion.div>
 

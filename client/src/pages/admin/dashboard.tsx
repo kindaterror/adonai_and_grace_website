@@ -94,7 +94,7 @@ export default function AdminDashboard() {
                 <div className="flex items-center mb-3">
                   <Shield className="h-8 w-8 text-ilaw-gold mr-3" />
                   <span className="text-lg text-ilaw-gold uppercase tracking-wide font-sans font-bold">
-                    Ilaw ng Bayan Learning Institute
+                    Adonai And Grace Inc.
                   </span>
                 </div>
                 <h1 className="text-3xl md:text-4xl mb-3 font-sans font-bold">

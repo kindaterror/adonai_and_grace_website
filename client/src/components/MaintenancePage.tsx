@@ -26,7 +26,7 @@ export function MaintenancePage() {
 
         <div className="text-sm text-gray-500">
           <p>Thank you for your patience!</p>
-          <p className="mt-2">- The Ilaw ng Bayan Learning Institute </p>
+          <p className="mt-2">- The Adonai And Grace Inc. Team</p>
         </div>
       </div>
     </div>

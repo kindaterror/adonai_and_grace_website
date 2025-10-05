@@ -1,6 +1,7 @@
 // == IMPORTS & DEPENDENCIES ==
 import { Link } from "wouter";
 import { Logo } from "@/components/ui/logo";
+import { SCHOOL_NAME_FULL, SCHOOL_NAME_SHORT, COPYRIGHT_LINE } from "@/lib/branding";
 import { Facebook, Twitter, Instagram, Send, Mail, Phone, MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -20,10 +21,10 @@ export default function Footer() {
               <Logo variant="visitor" className="bg-transparent border border-ilaw-gold text-ilaw-gold mb-4 hover:animate-torch-glow transition-all duration-300" />
               <div className="ml-4">
                 <h2 className="font-heading text-xl font-bold text-ilaw-gold">
-                  Ilaw ng Bayan
+                  {SCHOOL_NAME_SHORT}
                 </h2>
                 <p className="text-brand-gold-200 text-sm font-medium">
-                  Learning Institute
+                  {SCHOOL_NAME_FULL.replace(SCHOOL_NAME_SHORT + " ", "")}
                 </p>
               </div>
             </div>
@@ -139,7 +140,7 @@ export default function Footer() {
           <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
             <div className="text-center md:text-left">
               <p className="text-brand-gold-200 text-sm">
-                &copy; {new Date().getFullYear()} Ilaw ng Bayan Learning Institute. All rights reserved.
+                &copy; {new Date().getFullYear()} {COPYRIGHT_LINE}. All rights reserved.
               </p>
               <p className="text-brand-gold-300 text-xs mt-1">
                 Illuminating minds • Empowering futures • Building excellence

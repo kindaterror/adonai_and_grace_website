@@ -1,5 +1,6 @@
 import React from 'react';
 import { GraduationCap } from 'lucide-react';
+import { SCHOOL_NAME_FULL, SCHOOL_NAME_SHORT, SCHOOL_MOTTO_NATIVE } from "@/lib/branding";
 
 interface LogoProps {
   variant?: "visitor" | "admin" | "student" | "teacher";
@@ -61,9 +62,9 @@ export function Logo({
     <div className={`flex items-center group cursor-pointer ${className}`} {...props}>
       {/* Logo image with fallback */}
       <div className="relative flex items-center justify-center">
-        <img 
+        <img
           src="/logo1.png"
-          alt="Ilaw ng Bayan Learning Institute Logo" 
+          alt={`${SCHOOL_NAME_FULL} Logo`}
           className={`${getSizeClasses()} w-auto transition-transform duration-300 group-hover:scale-110`}
           style={{ maxHeight: size === "xl" ? "64px" : size === "lg" ? "56px" : size === "sm" ? "32px" : "40px" }}
           onError={(e) => {
@@ -89,22 +90,22 @@ export function Logo({
       {showText && (
         <div className="ml-3 flex flex-col">
           <span className={`font-heading font-bold leading-tight ${getTextSizeClasses()} ${getVariantStyles()}`}>
-            Ilaw ng Bayan
+            {SCHOOL_NAME_SHORT}
           </span>
           <span className={`font-heading font-semibold leading-tight ${
-            size === "xl" ? "text-lg" : 
-            size === "lg" ? "text-base" : 
-            size === "sm" ? "text-xs" : 
+            size === "xl" ? "text-lg" :
+            size === "lg" ? "text-base" :
+            size === "sm" ? "text-xs" :
             "text-sm"
           } ${getVariantStyles()} opacity-80`}>
-            Learning Institute
+            {SCHOOL_NAME_FULL.replace(SCHOOL_NAME_SHORT + " ", "")}
           </span>
           {/* Optional motto for larger sizes */}
           {(size === "lg" || size === "xl") && (
             <span className={`font-medium italic ${
               size === "xl" ? "text-sm" : "text-xs"
             } ${getVariantStyles()} opacity-60 mt-0.5`}>
-              Liwanag, Kaalaman, Paglilingkod
+              {SCHOOL_MOTTO_NATIVE}
             </span>
           )}
         </div>

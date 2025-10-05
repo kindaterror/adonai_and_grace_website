@@ -13,7 +13,7 @@
     --popover: 0 0% 99%;  /* Soft White #FDFDFD */
     --popover-foreground: 0 0% 20%;  /* Charcoal Gray #333333 */
 
-    --primary: 45 96% 48%;  /* Goldenrod Yellow #F4B400 for Ilaw ng Bayan */
+  --primary: 45 96% 48%;  /* Goldenrod Yellow #F4B400 (legacy accent from previous palette) */
     --primary-foreground: 240 83% 18%;  /* Deep Navy Blue #1A237E */
 
     --secondary: 39 100% 50%;  /* Warm Amber #FFA000 */
@@ -60,7 +60,7 @@
     --popover: 0 0% 3.9%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 45 96% 48%;  /* Goldenrod Yellow #F4B400 for Ilaw ng Bayan dark mode */
+  --primary: 45 96% 48%;  /* Goldenrod Yellow #F4B400 (dark mode accent) */
     --primary-foreground: 240 83% 18%;  /* Deep Navy Blue #1A237E */
 
     --secondary: 39 100% 50%;  /* Warm Amber #FFA000 */

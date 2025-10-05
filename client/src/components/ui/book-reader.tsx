@@ -604,7 +604,7 @@ export function BookReader({
               </div>
             )}
           </div>
-          <p className="text-brand-gold-600 font-medium italic">An Ilaw ng Bayan Learning Experience ✨</p>
+          <p className="text-brand-gold-600 font-medium italic">An Adonai And Grace Learning Experience ✨</p>
         </div>
       )}
 

@@ -225,7 +225,7 @@ export default function AdminTeacher() {
           >
             <GraduationCap className="h-8 w-8 text-ilaw-gold mr-3" />
             <span className="text-lg font-sans font-bold text-ilaw-gold">
-              ILAW NG BAYAN LEARNING INSTITUTE
+              ADONAI AND GRACE INC.
             </span>
           </motion.div>
           <motion.h1

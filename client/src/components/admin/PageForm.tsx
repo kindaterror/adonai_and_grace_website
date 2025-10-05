@@ -1,5 +1,5 @@
 // == IMPORTS & DEPENDENCIES ==
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -133,6 +133,8 @@ export function PageForm({
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [lastQuestionsChange, setLastQuestionsChange] = useState(0);
   const [lastImageChange, setLastImageChange] = useState(0);
+  const saveTimerRef = useRef<number | null>(null);
+  const latestPayloadRef = useRef<PageFormValues | null>(null);
 
   // == Effects ==
   useEffect(() => {
@@ -177,67 +179,55 @@ export function PageForm({
     }
   }, [transformed, fallbackRaw]);
 
-  // == Auto-Save: Content Changes ==
-  useEffect(() => {
-    const subscription = form.watch((values, { type }) => {
-      if (isInitialLoad) return;
-
-      if (values.content && values.content.trim() && (type === 'change')) {
-        setHasUnsavedChanges(true);
-
-        const pageData: PageFormValues = {
-          id: initialValues?.id, // preserve existing page id so we update instead of creating duplicate
-            pageNumber,
-            title: values.title ?? '',
-            content: (values.content ?? "") as string,
-            imageUrl: values.imageUrl ?? '',
-            imagePublicId: values.imagePublicId ?? '',
-            questions: questions.length > 0 ? questions : undefined,
-            showNotification: false
-          };
-
-        const timeoutId = setTimeout(() => {
-          onSave(pageData);
-          setHasUnsavedChanges(false);
-        }, 1200);
-
-        return () => clearTimeout(timeoutId);
+  // Unified debounced auto-save (reduces flicker / re-render storms)
+  const queueSave = useCallback((showNotification: boolean) => {
+    if (isInitialLoad) return;
+    const v = form.getValues();
+    if (!v.content || !v.content.trim()) return;
+    const payload: PageFormValues = {
+      id: initialValues?.id,
+      pageNumber,
+      title: v.title ?? '',
+      content: v.content ?? '',
+      imageUrl: v.imageUrl ?? '',
+      imagePublicId: v.imagePublicId ?? '',
+      questions: questions.length > 0 ? questions : undefined,
+      showNotification
+    };
+    latestPayloadRef.current = payload;
+    setHasUnsavedChanges(true);
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    // Longer debounce for typing, shorter when structural changes (questions/image) set showNotification
+    const delay = showNotification ? 700 : 1400;
+    saveTimerRef.current = window.setTimeout(() => {
+      const finalPayload = latestPayloadRef.current;
+      if (finalPayload) {
+        onSave(finalPayload);
       }
+      setHasUnsavedChanges(false);
+    }, delay);
+  }, [form, initialValues?.id, isInitialLoad, onSave, pageNumber, questions]);
+
+  // Watch content/title/image fields changes
+  useEffect(() => {
+    const sub = form.watch((_vals, info) => {
+      if (info?.type === 'change') queueSave(false);
     });
+    return () => sub.unsubscribe();
+  }, [form, queueSave]);
 
-    return () => subscription.unsubscribe();
-  }, [form, pageNumber, questions, onSave, isInitialLoad, hasUnsavedChanges]);
-
-  // == Auto-Save: Question Changes ==
+  // Re-queue when questions change (more immediate)
   useEffect(() => {
     if (isInitialLoad) return;
+    if (questions) queueSave(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questions]);
 
-    const formValues = form.getValues();
-    if (formValues.content && formValues.content.trim()) {
-      setHasUnsavedChanges(true);
-
-      const now = Date.now();
-      const shouldShowNotification = now - lastQuestionsChange < 500;
-
-      const pageData: PageFormValues = {
-        id: initialValues?.id,
-          pageNumber,
-          title: formValues.title ?? '',
-          content: formValues.content ?? '',
-          imageUrl: formValues.imageUrl ?? '',
-          imagePublicId: formValues.imagePublicId ?? '',
-          questions: questions.length > 0 ? questions : undefined,
-          showNotification: shouldShowNotification
-        };
-
-      const timeoutId = setTimeout(() => {
-        onSave(pageData);
-        setHasUnsavedChanges(false);
-      }, 500);
-
-      return () => clearTimeout(timeoutId);
-    }
-  }, [questions, form, pageNumber, onSave, isInitialLoad, hasUnsavedChanges, lastQuestionsChange]);
+  // Re-queue when image changed explicitly
+  useEffect(() => {
+    if (isInitialLoad) return;
+    if (lastImageChange) queueSave(true);
+  }, [lastImageChange, isInitialLoad, queueSave]);
 
   // == Image Handling (via /api/upload) ==
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -266,22 +256,7 @@ export function PageForm({
       setHasUnsavedChanges(true);
       setLastImageChange(Date.now());
 
-      const formValues = form.getValues();
-      const pageData: PageFormValues = {
-        id: initialValues?.id,
-          pageNumber,
-          title: formValues.title ?? '',
-          content: formValues.content ?? '',
-          imageUrl: url,
-          imagePublicId: publicId ?? '',
-          questions: questions.length > 0 ? questions : undefined,
-          showNotification: true
-        };
-
-      setTimeout(() => {
-        onSave(pageData);
-        setHasUnsavedChanges(false);
-      }, 500);
+      queueSave(true);
 
       toast({ title: 'Image uploaded', description: 'Page image uploaded successfully.' });
     } catch (err: any) {
@@ -303,22 +278,7 @@ export function PageForm({
     setHasUnsavedChanges(true);
     setLastImageChange(Date.now());
 
-    const formValues = form.getValues();
-    const pageData: PageFormValues = {
-      id: initialValues?.id,
-        pageNumber,
-        title: formValues.title ?? '',
-        content: formValues.content ?? '',
-        imageUrl: "",
-        imagePublicId: "",
-        questions: questions.length > 0 ? questions : undefined,
-        showNotification: true
-      };
-
-    setTimeout(() => {
-      onSave(pageData);
-      setHasUnsavedChanges(false);
-    }, 500);
+    queueSave(true);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";

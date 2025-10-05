@@ -85,7 +85,7 @@ export default function EducationalBooks() {
               <GraduationCap className="h-10 w-10 text-ilaw-gold mr-4" />
               <div>
                 <span className="text-sm uppercase tracking-wide text-brand-gold-200">
-                  Ilaw ng Bayan Learning Institute
+                  Adonai And Grace Inc.
                 </span>
               </div>
             </div>

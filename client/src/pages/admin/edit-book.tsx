@@ -461,7 +461,7 @@ export default function EditBook() {
           <div className="flex items-center justify-center mb-3">
             <GraduationCap className="h-7 w-7 text-ilaw-gold mr-2" />
             <span className="text-sm font-sans font-bold text-ilaw-gold tracking-wide uppercase">
-              Ilaw ng Bayan Learning Institute
+              Adonai And Grace Inc.
             </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-sans font-bold text-center">✏️ Edit Book</h1>

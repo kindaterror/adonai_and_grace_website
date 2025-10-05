@@ -136,7 +136,7 @@ export default function BookDetails() {
           <div className="flex items-center justify-center mb-2">
             <GraduationCap className="h-8 w-8 text-ilaw-gold mr-3" />
             <span className="text-sm md:text-base font-heading font-bold text-ilaw-gold tracking-wide uppercase">
-              Ilaw ng Bayan Learning Institute
+              Adonai And Grace Inc.
             </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-heading font-bold">Book Details</h1>

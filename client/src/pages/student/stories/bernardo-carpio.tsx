@@ -12,6 +12,8 @@ import '@/pages/student/stories/bernardo-carpio.css';
 import '@/pages/student/stories/2danimatedstorybook.css';
 import { getCheckpoint as getCheckpointAPI, saveCheckpoint as saveCheckpointAPI, resetCheckpoint as resetCheckpointAPI } from '@/lib/stories/checkpointClient';
 import { markBookComplete as markBookCompleteAPI } from '@/lib/clients/completeClient';
+import { queryClient } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 
 /* ===== meta ===== */
 const BOOK_SLUG = 'bernardo-carpio';
@@ -100,6 +102,8 @@ const minimalFallback: Page[] = [
 /* ===== component ===== */
 export default function BernardoCarpioStory(){
   const { lang, setLang } = useLang();
+  const { toast } = useToast();
+  const completionHandledRef = useRef(false);
 
   // spread navigation (two pages at a time)
   const [spreadStart, setSpreadStart] = useState(0); // left page index
@@ -205,7 +209,22 @@ export default function BernardoCarpioStory(){
   /* ===== navigation / gating ===== */
   const handleNext = () => {
     if(pendingSide || isFlipping) return;
-    if(rightIndex >= storyPages.length){ setIsStoryComplete(true); markBookCompleteAPI(BOOK_ID ?? BOOK_SLUG).catch(()=>{}); saveCheckpoint(true).catch(()=>{}); return; }
+    if(rightIndex >= storyPages.length){
+      setIsStoryComplete(true);
+      if(!completionHandledRef.current){
+        completionHandledRef.current = true;
+        (async()=>{
+          try {
+            const resp = await markBookCompleteAPI(BOOK_ID ?? BOOK_SLUG);
+            if(resp?.awardedBadge?.badgeName){
+              toast({ title: 'Badge Earned!', description: resp.awardedBadge.badgeName });
+            }
+          } catch {}
+          queryClient.invalidateQueries({ queryKey: ['earned-badges'] });
+        })();
+      }
+      saveCheckpoint(true).catch(()=>{});
+      return; }
     const goingSide: 'left' | 'right' = rightUnlocked ? 'right' : 'left';
     const targetIndex = goingSide === 'left' ? leftIndex : rightIndex;
     const targetHasQuiz = !!storyPages[targetIndex]?.quiz;
@@ -215,7 +234,7 @@ export default function BernardoCarpioStory(){
       setIsFlipping(true); setFlipRightNow(true);
       setTimeout(()=>{
         const nextLeft = spreadStart + 2;
-        if(nextLeft >= storyPages.length){ setIsStoryComplete(true); markBookCompleteAPI(BOOK_ID ?? BOOK_SLUG).catch(()=>{}); saveCheckpoint(true).catch(()=>{}); }
+  if(nextLeft >= storyPages.length){ setIsStoryComplete(true); if(!completionHandledRef.current){ completionHandledRef.current = true; (async()=>{ try { const resp = await markBookCompleteAPI(BOOK_ID ?? BOOK_SLUG); if(resp?.awardedBadge?.badgeName){ toast({ title: 'Badge Earned!', description: resp.awardedBadge.badgeName }); } } catch {} queryClient.invalidateQueries({ queryKey: ['earned-badges'] }); })(); } saveCheckpoint(true).catch(()=>{}); }
         else { setSpreadStart(nextLeft); setRightUnlocked(false); saveCheckpoint().catch(()=>{}); }
         setIsFlipping(false); setFlipRightNow(false);
       },650);
@@ -227,7 +246,7 @@ export default function BernardoCarpioStory(){
   const resetQuiz = () => { setSelectedAnswer(''); setHasAnswered(false); setIsCorrect(false); setFeedback(''); };
   const handleAnswerSubmit = () => { if(quizPageIndex==null) return; const q = storyPages[quizPageIndex]?.quiz; if(!q) return; const correct = q.options.find(o=>o.slug===selectedAnswer)?.correct; const ok=!!correct; setIsCorrect(ok); setHasAnswered(true); setFeedback(ok? i18n[lang].fbCorrect : i18n[lang].fbWrong); if(ok){ setAnswers(prev=>({...prev,[q.questionSlug]:selectedAnswer})); } };
   const tryAgain = () => resetQuiz();
-  const continueAfterCorrect = () => { if(!isCorrect || pendingSide==null) return; if(pendingSide==='left'){ setRightUnlocked(true); setPendingSide(null); setQuizPageIndex(null); resetQuiz(); saveCheckpoint().catch(()=>{}); } else { setPendingSide(null); setQuizPageIndex(null); resetQuiz(); setFlipRightNow(true); setIsFlipping(true); setTimeout(()=>{ const nextLeft= spreadStart + 2; if(nextLeft >= storyPages.length){ setIsStoryComplete(true); markBookCompleteAPI(BOOK_ID ?? BOOK_SLUG).catch(()=>{}); saveCheckpoint(true).catch(()=>{}); } else { setSpreadStart(nextLeft); setRightUnlocked(false); saveCheckpoint().catch(()=>{}); } setIsFlipping(false); setFlipRightNow(false); },650); } };
+  const continueAfterCorrect = () => { if(!isCorrect || pendingSide==null) return; if(pendingSide==='left'){ setRightUnlocked(true); setPendingSide(null); setQuizPageIndex(null); resetQuiz(); saveCheckpoint().catch(()=>{}); } else { setPendingSide(null); setQuizPageIndex(null); resetQuiz(); setFlipRightNow(true); setIsFlipping(true); setTimeout(()=>{ const nextLeft= spreadStart + 2; if(nextLeft >= storyPages.length){ setIsStoryComplete(true); if(!completionHandledRef.current){ completionHandledRef.current = true; (async()=>{ try { const resp = await markBookCompleteAPI(BOOK_ID ?? BOOK_SLUG); if(resp?.awardedBadge?.badgeName){ toast({ title: 'Badge Earned!', description: resp.awardedBadge.badgeName }); } } catch {} queryClient.invalidateQueries({ queryKey: ['earned-badges'] }); })(); } saveCheckpoint(true).catch(()=>{}); } else { setSpreadStart(nextLeft); setRightUnlocked(false); saveCheckpoint().catch(()=>{}); } setIsFlipping(false); setFlipRightNow(false); },650); } };
   const restartStory = () => { setSpreadStart(0); setRightUnlocked(false); setPendingSide(null); setQuizPageIndex(null); setIsStoryComplete(false); setFlipRightNow(false); setAnswers({}); resetQuiz(); resetCheckpointAPI(BOOK_SLUG).catch(()=>{}); saveCheckpoint().catch(()=>{}); };
 
   /* ===== styles for fullscreen centering ===== */

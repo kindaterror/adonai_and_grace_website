@@ -197,7 +197,7 @@ return (
         <div className="flex items-center justify-center mb-2">
           <GraduationCap className="h-8 w-8 text-ilaw-gold mr-3" />
           <span className="text-sm md:text-base text-ilaw-gold tracking-wide uppercase">
-            Ilaw ng Bayan Learning Institute
+            Adonai And Grace Inc.
           </span>
         </div>
         <h1 className="text-2xl md:text-3xl text-center">Books Management</h1>

@@ -157,7 +157,7 @@ const CardFooter = React.forwardRef<
 ))
 CardFooter.displayName = "CardFooter"
 
-// Special Ilaw ng Bayan Card Components
+// Special themed Card Components (legacy naming retained for context)
 const FeatureCard = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, ...props }, ref) => (
     <Card

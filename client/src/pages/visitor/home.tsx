@@ -62,7 +62,7 @@ export default function Home() {
           <div className="max-w-4xl">
             <div className="mb-6">
               <span className="inline-block bg-ilaw-gold text-ilaw-navy px-4 py-2 rounded-full text-sm font-sans font-bold tracking-wide uppercase">
-                Ilaw ng Bayan Learning Institute
+                Adonai And Grace Inc.
               </span>
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight font-sans">
@@ -105,7 +105,7 @@ export default function Home() {
               <GraduationCap className="h-12 w-12 text-ilaw-gold mx-auto mb-4" />
             </div>
             <h2 className="text-4xl md:text-5xl font-bold text-ilaw-navy mb-6 font-sans">
-              About Ilaw ng Bayan Learning Institute
+              About Adonai And Grace Inc.
             </h2>
             <div className="w-32 h-1 bg-gradient-to-r from-ilaw-gold to-brand-amber mx-auto mb-6"></div>
             <p className="text-xl text-yellow-600 max-w-3xl mx-auto font-sans font-bold">
@@ -117,7 +117,7 @@ export default function Home() {
             <div className="rounded-2xl overflow-hidden shadow-2xl group">
               <img
                 src={schoolBuilding}
-                alt="Ilaw ng Bayan Learning Institute Building"
+                alt="Adonai And Grace Inc. Building"
                 loading="lazy" decoding="async"
                 className="w-full h-96 object-cover group-hover:scale-105 transition-transform duration-500"
               />

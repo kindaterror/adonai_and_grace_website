@@ -117,7 +117,7 @@ function TeacherDashboard() {
                 <motion.div variants={fadeInUp} className="flex items-center mb-2 font-sans font-bold">
                   <GraduationCap className="h-8 w-8 text-ilaw-gold mr-3" />
                   <span className="text-sm uppercase tracking-wider text-white/80 font-sans font-bold">
-                    Ilaw ng Bayan Learning Institute
+                    Adonai And Grace Inc.
                   </span>
                 </motion.div>
 

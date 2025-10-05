@@ -9,7 +9,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Primary - Ilaw ng Bayan Gold
+  // Primary accent gold (legacy color retained)
         default: "bg-ilaw-gold text-ilaw-navy hover:bg-brand-amber hover:shadow-ilaw border border-transparent",
         
         // Secondary - Navy Blue
@@ -33,7 +33,7 @@ const buttonVariants = cva(
         // Warning - Amber variation
         warning: "bg-brand-amber text-ilaw-navy hover:bg-yellow-500 hover:shadow-lg border border-transparent",
         
-        // Gradient - Special Ilaw ng Bayan gradient
+  // Gradient - Heritage gold gradient
         gradient: "bg-gradient-to-r from-ilaw-gold to-brand-amber text-ilaw-navy hover:from-brand-amber hover:to-ilaw-gold hover:shadow-ilaw border border-transparent",
         
         // Light - Soft white with navy text

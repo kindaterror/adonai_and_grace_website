@@ -1,7 +1,7 @@
 /* Base book styles */
 .book-wrapper {
   perspective: 3000px;
-  background-color: #FDFDFD;  /* Soft White for Ilaw ng Bayan */
+  background-color: #FDFDFD;  /* Soft White brand base */
   border-radius: 8px;
   border: 8px solid #1A237E;  /* Deep Navy Blue border */
   overflow: hidden;
@@ -78,7 +78,7 @@
   left: 0;
   backface-visibility: hidden;
   overflow: hidden;
-  background: #FDFDFD;  /* Soft White for Ilaw ng Bayan */
+  background: #FDFDFD;  /* Soft White brand base */
 }
 
 .page-back {
@@ -92,7 +92,7 @@
   height: 100%;
   padding: 20px;
   box-sizing: border-box;
-  background-color: #FDFDFD;  /* Soft White for Ilaw ng Bayan */
+  background-color: #FDFDFD;  /* Soft White brand base */
   display: flex;
   flex-direction: column;
   color: #333333;  /* Charcoal Gray text */

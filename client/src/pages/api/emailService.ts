@@ -232,15 +232,15 @@ export const sendVerificationEmail = async (
         <div style="background: rgba(251, 191, 36, 0.1); border: 2px solid #fbbf24; border-radius: 50%; width: 80px; height: 80px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;">
           🎓
         </div>
-        <h1 style="color: #fbbf24; margin: 0; font-size: 28px; font-weight: bold;">Ilaw ng Bayan</h1>
-        <p style="color: #fbbf24; margin: 5px 0 0; font-size: 16px;">Learning Institute</p>
+  <h1 style="color: #fbbf24; margin: 0; font-size: 28px; font-weight: bold;">Adonai & Grace</h1>
+  <p style="color: #fbbf24; margin: 5px 0 0; font-size: 16px;">Adonai And Grace Inc.</p>
       </div>
       
       <!-- Content -->
       <div style="background: white; padding: 40px 30px; color: #374151;">
         <h2 style="color: #1e3a8a; margin: 0 0 20px; font-size: 24px;">Welcome, ${safeName}! ✨</h2>
         <p style="font-size: 16px; line-height: 1.6; margin: 0 0 25px;">
-          Thank you for joining Ilaw ng Bayan Learning Institute! We're excited to have you as part of our educational community.
+          Thank you for joining Adonai And Grace Inc.! We're excited to have you as part of our educational community.
         </p>
         <p style="font-size: 16px; line-height: 1.6; margin: 0 0 30px;">
           Please verify your email address to complete your registration and start your learning journey:
@@ -278,7 +278,7 @@ export const sendVerificationEmail = async (
   `;
 
   try {
-    await sendMail(email, "Verify your Ilaw ng Bayan Learning Institute account", html);
+  await sendMail(email, "Verify your Adonai And Grace Inc. account", html);
     console.log("Verification email queued (recipient hidden for privacy)");
   } catch (error: any) {
     console.error("SMTP send error (verification):", error?.message ?? String(error));
@@ -302,7 +302,7 @@ export const sendPasswordResetEmail = async (
           🔐
         </div>
         <h1 style="color: #fbbf24; margin: 0; font-size: 28px; font-weight: bold;">Password Reset</h1>
-        <p style="color: #fbbf24; margin: 5px 0 0; font-size: 16px;">Ilaw ng Bayan Learning Institute</p>
+  <p style="color: #fbbf24; margin: 5px 0 0; font-size: 16px;">Adonai And Grace Inc.</p>
       </div>
       
       <!-- Content -->
@@ -340,7 +340,7 @@ export const sendPasswordResetEmail = async (
   `;
 
   try {
-    await sendMail(email, "Reset your Ilaw ng Bayan Learning Institute password", html);
+  await sendMail(email, "Reset your Adonai And Grace Inc. password", html);
     console.log("Password reset email queued (recipient hidden for privacy)");
   } catch (error: any) {
     console.error("SMTP send error (password reset):", error?.message ?? String(error));
@@ -364,14 +364,14 @@ export const sendWelcomeEmail = async (
           🎓
         </div>
         <h1 style="color: #fbbf24; margin: 0; font-size: 28px; font-weight: bold;">Welcome Aboard!</h1>
-        <p style="color: #fbbf24; margin: 5px 0 0; font-size: 16px;">Ilaw ng Bayan Learning Institute</p>
+  <p style="color: #fbbf24; margin: 5px 0 0; font-size: 16px;">Adonai And Grace Inc.</p>
       </div>
       
       <!-- Content -->
       <div style="background: white; padding: 40px 30px; color: #374151;">
         <h2 style="color: #1e3a8a; margin: 0 0 20px; font-size: 24px;">Congratulations, ${safeName}! 🌟</h2>
         <p style="font-size: 16px; line-height: 1.6; margin: 0 0 25px;">
-          Your <strong>${safeRole}</strong> account has been successfully verified! You're now part of the Ilaw ng Bayan Learning Institute community.
+          Your <strong>${safeRole}</strong> account has been successfully verified! You're now part of the Adonai And Grace Inc. community.
         </p>
         <p style="font-size: 16px; line-height: 1.6; margin: 0 0 30px;">
           Get ready to explore our interactive educational content and begin your learning journey!
@@ -413,7 +413,7 @@ export const sendWelcomeEmail = async (
   `;
 
   try {
-    await sendMail(email, "Welcome to Ilaw ng Bayan Learning Institute! 🎉", html);
+  await sendMail(email, "Welcome to Adonai And Grace Inc.! 🎉", html);
     console.log("Welcome email queued (recipient hidden for privacy)");
   } catch (error: any) {
     console.error("SMTP send error (welcome):", error?.message ?? String(error));
