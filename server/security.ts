@@ -119,7 +119,11 @@ export function getCSPHeader(): string {
     "script-src": ["'self'"],
     // Allow external Google Fonts stylesheet + inline (dev) + self-hosted styles
     // We explicitly add https://fonts.googleapis.com below (prod + dev) so the link tag works under CSP.
-    "style-src": ["'self'", "https://fonts.googleapis.com"],
+  // Radix UI + some component libraries inject inline style attributes. To avoid
+  // widespread CSP violations we allow 'unsafe-inline' for styles. If you later
+  // refactor to eliminate inline styles, you can remove 'unsafe-inline' and
+  // move styles into stylesheet files.
+  "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
     "img-src": ["'self'", "data:", "blob:"],
     "connect-src": ["'self'"],
   // media-src controls allowed sources for <audio> and <video>
@@ -136,6 +140,16 @@ export function getCSPHeader(): string {
   // Allow cloudinary for media as well (audio/video served from Cloudinary)
   directives["media-src"].push("https://res.cloudinary.com");
   directives["connect-src"].push("https://api.cloudflare.com", "https://res.cloudinary.com");
+  // Optionally allow the deployed render domain explicitly via env var DEPLOY_PUBLIC_ORIGIN
+  const publicOrigin = process.env.DEPLOY_PUBLIC_ORIGIN;
+  if (publicOrigin) {
+    try {
+      const u = new URL(publicOrigin);
+      directives["connect-src"].push(u.origin);
+      directives["img-src"].push(u.origin);
+      directives["media-src"].push(u.origin);
+    } catch { /* ignore invalid */ }
+  }
 
   // Include any additional hosts provided via CSP_ADDITIONAL_HOSTS env var
   if (additionalHosts.length) {

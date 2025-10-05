@@ -20,8 +20,10 @@ function toHttpError(res: Response, body: any): Error {
 }
 
 // == API BASE URL ==
-// Allow overriding via env to make the client configurable; fallback to localhost.
-const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL as string) || "http://127.0.0.1:3000";
+// Allow overriding via env to make the client configurable. If not provided,
+// use the current origin (works for production) instead of hardcoding localhost.
+// This prevents CSP violations when deployed.
+const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL as string) || (typeof window !== 'undefined' ? window.location.origin : "");
 
 // == API REQUEST FUNCTION ==
 export async function apiRequest<T = any>(
