@@ -24,6 +24,11 @@ function toHttpError(res: Response, body: any): Error {
 // use the current origin (works for production) instead of hardcoding localhost.
 // This prevents CSP violations when deployed.
 const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL as string) || (typeof window !== 'undefined' ? window.location.origin : "");
+if (import.meta.env?.MODE !== 'production') {
+  // Helpful debug so we know what base URL the client picked up after build
+  // (Will be stripped / tree-shaken in prod builds by terser if configured)
+  console.log('[api] using base URL:', API_BASE_URL);
+}
 
 // == API REQUEST FUNCTION ==
 export async function apiRequest<T = any>(

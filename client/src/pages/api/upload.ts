@@ -253,7 +253,8 @@ export default async function handler(
 
   try {
   // Allow client to suggest a max size via header or URL param; we'll parse the upload first
-  const rawMaxMb = Number((req.headers["x-max-mb"] as string) || (req.headers["max-mb"] as string) || (req.url && new URL(req.url, "http://localhost").searchParams.get("maxMb")) || "") || undefined;
+  // Use a non-routable dummy base instead of localhost when parsing relative URLs
+  const rawMaxMb = Number((req.headers["x-max-mb"] as string) || (req.headers["max-mb"] as string) || (req.url && new URL(req.url, "http://internal.invalid").searchParams.get("maxMb")) || "") || undefined;
 
   // Parse multipart with a reasonable default; we'll enforce exact limits below after reading fields
   const { fields, fileBuffer, filename, mimetype } = await parseMultipart(req, DEFAULT_MAX_MB * 1024 * 1024);

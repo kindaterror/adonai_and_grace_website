@@ -28,7 +28,10 @@ const toIntEnv = (v: string | undefined, fallback: number, min = 1, max = 365 * 
 const RESET_TTL_MIN = toIntEnv(process.env.PASSWORD_RESET_TTL_MIN, 15, 1, 60 * 24);
 const VERIFY_TTL_HOURS = toIntEnv(process.env.EMAIL_VERIFY_TTL_HOURS, 24, 1, 24 * 365);
 
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+// Prefer explicit FRONTEND_URL (or DEPLOY_PUBLIC_ORIGIN) and avoid hardcoded localhost fallback
+// so production emails never leak a dev URL. If neither is set we leave it blank and links will be invalid,
+// which is safer than pointing users to a non-existent localhost.
+const FRONTEND_URL = process.env.FRONTEND_URL || process.env.DEPLOY_PUBLIC_ORIGIN || "";
 const EMAIL_FROM = required("EMAIL_FROM");
 
 // ---- SMTP Transport ----

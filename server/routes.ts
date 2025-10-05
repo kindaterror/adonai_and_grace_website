@@ -33,16 +33,31 @@ if (JWT_SECRET.length < 32) {
   console.warn("⚠️  JWT_SECRET is too short. Consider using a longer, more secure key.");
 }
 
-const allowedOrigins = [
-  process.env.FRONTEND_URL,      // e.g. http://localhost:3000
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-].filter(Boolean) as string[];
+// Derive production origin (Render domain or custom) and allow local dev origins only outside production.
+const derivedPublicOrigin = (process.env.DEPLOY_PUBLIC_ORIGIN || process.env.FRONTEND_URL || "").trim();
+const allowedOrigins = (
+  process.env.NODE_ENV === 'production'
+    ? [derivedPublicOrigin]
+    : [
+        derivedPublicOrigin,
+        process.env.FRONTEND_URL, // local dev FRONTEND_URL if set
+        'http://localhost:3000',
+        'http://127.0.0.1:3000'
+      ]
+).filter(Boolean) as string[];
 
 const corsOptions: cors.CorsOptions = {
   origin(origin, callback) {
     // allow non-browser tools (no origin) and allowed origins
     if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+
+    // If origin matches our public origin but with https/http mismatch, normalize & allow
+    if (derivedPublicOrigin) {
+      try {
+        const norm = (o: string) => new URL(o).host;
+        if (norm(origin) === norm(derivedPublicOrigin)) return callback(null, true);
+      } catch {/* ignore */}
+    }
 
     // During local development, allow requests from LAN addresses (e.g. http://192.168.x.x)
     if (process.env.NODE_ENV !== "production" && typeof origin === "string" && origin.startsWith("http://192.168.")) {
