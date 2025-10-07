@@ -51,14 +51,16 @@ const VERIFY_TTL_HOURS = toIntEnv(process.env.EMAIL_VERIFY_TTL_HOURS, 24, 1, 24 
 
 // Prefer explicit FRONTEND_URL or DEPLOY_PUBLIC_ORIGIN; otherwise blank to avoid leaking localhost
 const FRONTEND_URL = process.env.FRONTEND_URL || process.env.DEPLOY_PUBLIC_ORIGIN || "";
-const EMAIL_FROM = required("EMAIL_FROM"); // e.g. "Adonai & Grace School <noreply@send.adonaigrace.edu.ph>"
+const EMAIL_FROM = required("EMAIL_FROM"); // e.g. "Adonai & Grace Inc. <your@gmail.com>"
 const REPLY_TO = process.env.REPLY_TO || ""; // optional
 
 /* ------------------------- Provider Config & Decide ------------------------ */
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
+const RESEND_API_KEY  = process.env.RESEND_API_KEY || "";
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || "";
-const EMAIL_PROVIDER = (process.env.EMAIL_PROVIDER || "").toLowerCase(); // optional explicit selection
+const BREVO_API_KEY    = process.env.BREVO_API_KEY || "";
+
+const EMAIL_PROVIDER = (process.env.EMAIL_PROVIDER || "").toLowerCase(); // 'brevoapi' | 'resend' | 'sendgrid' | 'smtp'
 
 /* --------------------------------- SMTP ---------------------------------- */
 // Optional: only used if API providers are absent/fail AND SMTP_* provided
@@ -121,22 +123,42 @@ function httpsJson(
       },
       (res) => {
         let data = "";
-        res.on("data", (chunk) => {
-          data += chunk;
-        });
+        res.on("data", (chunk) => (data += chunk));
         res.on("end", () => resolve({ status: res.statusCode || 0, body: data }));
       }
     );
     req.on("error", reject);
-    req.setTimeout(15_000, () => {
-      req.destroy(new Error("HTTPS request timeout"));
-    });
+    req.setTimeout(15_000, () => req.destroy(new Error("HTTPS request timeout")));
     req.write(JSON.stringify(bodyObj));
     req.end();
   });
 }
 
 /* -------------------------------- Providers ------------------------------- */
+
+// Brevo HTTPS API (port 443 — good when SMTP ports are blocked)
+async function sendViaBrevoAPI(to: string, subject: string, html: string) {
+  const fromEmail = (EMAIL_FROM.match(/<([^>]+)>/)?.[1] || EMAIL_FROM).trim();
+  const fromName  = EMAIL_FROM.replace(/<[^>]+>/g, "").trim();
+
+  const payload: any = {
+    sender: { email: fromEmail, name: fromName || undefined },
+    to: [{ email: to }],
+    subject,
+    htmlContent: html,
+    textContent: htmlToText(html),
+  };
+  if (REPLY_TO) payload.replyTo = { email: REPLY_TO };
+
+  const resp = await httpsJson(
+    "https://api.brevo.com/v3/smtp/email",
+    "POST",
+    { "api-key": BREVO_API_KEY },
+    payload
+  );
+  if (resp.status >= 200 && resp.status < 300) return true;
+  throw new Error(`BREVO_API_${resp.status}:${resp.body.slice(0, 200)}`);
+}
 
 async function sendViaResend(to: string, subject: string, html: string) {
   const payload: any = {
@@ -166,7 +188,7 @@ async function sendViaSendGrid(to: string, subject: string, html: string) {
     subject,
     content: [
       { type: "text/plain", value: htmlToText(html) },
-      { type: "text/html", value: html },
+      { type: "text/html",  value: html },
     ],
   };
   if (REPLY_TO) payload.reply_to = { email: REPLY_TO };
@@ -220,15 +242,17 @@ async function sendMailWithFallback(to: string, subject: string, html: string) {
 async function sendMail(to: string, subject: string, html: string) {
   const sender = (EMAIL_FROM.match(/<([^>]+)>/)?.[1] || EMAIL_FROM).toLowerCase();
 
-  if ((RESEND_API_KEY || SENDGRID_API_KEY) && sender.endsWith("@gmail.com")) {
-    console.warn("[email] Using a gmail.com From address with an API provider may reduce deliverability.");
+  if ((RESEND_API_KEY || SENDGRID_API_KEY || BREVO_API_KEY) && sender.endsWith("@gmail.com")) {
+    console.warn("[email] Using a gmail.com From address with a provider may reduce deliverability.");
   }
 
-  // Explicit provider choice wins
+  // 1) Explicit provider choice wins
+  if (EMAIL_PROVIDER === "brevoapi" && BREVO_API_KEY) {
+    return sendViaBrevoAPI(to, subject, html);
+  }
   if (EMAIL_PROVIDER === "resend" && RESEND_API_KEY) {
-    try {
-      return await sendViaResend(to, subject, html);
-    } catch (e: any) {
+    try { return await sendViaResend(to, subject, html); }
+    catch (e: any) {
       const msg = String(e?.message || e);
       if (msg.includes("You can only send testing emails")) {
         const err = new Error("EMAIL_DOMAIN_UNVERIFIED");
@@ -236,38 +260,37 @@ async function sendMail(to: string, subject: string, html: string) {
         throw err;
       }
       console.warn("[email] Resend (explicit) failed:", msg);
-      // fall through to SendGrid/SMTP attempts
     }
   }
   if (EMAIL_PROVIDER === "sendgrid" && SENDGRID_API_KEY) {
-    try {
-      return await sendViaSendGrid(to, subject, html);
-    } catch (e: any) {
-      console.warn("[email] SendGrid (explicit) failed:", String(e));
-      // fall through to SMTP attempt
+    try { return await sendViaSendGrid(to, subject, html); }
+    catch (e: any) { console.warn("[email] SendGrid (explicit) failed:", String(e)); }
+  }
+  if (EMAIL_PROVIDER === "smtp") {
+    return sendMailWithFallback(to, subject, html);
+  }
+
+  // 2) Auto order: Brevo API → Resend → SendGrid → SMTP
+  if (BREVO_API_KEY) {
+    try { return await sendViaBrevoAPI(to, subject, html); }
+    catch (e: any) { console.warn("[email] Brevo API failed, trying next…", String(e?.message || e)); }
+  }
+  if (RESEND_API_KEY) {
+    try { return await sendViaResend(to, subject, html); }
+    catch (e: any) {
+      const msg = String(e?.message || e);
+      if (msg.includes("You can only send testing emails")) {
+        const err = new Error("EMAIL_DOMAIN_UNVERIFIED");
+        (err as any).original = e;
+        throw err;
+      }
+      console.warn("[email] Resend failed, trying SendGrid…", msg);
     }
   }
-
-  // Auto: Resend → SendGrid → SMTP
-  try {
-    if (RESEND_API_KEY) return await sendViaResend(to, subject, html);
-  } catch (e: any) {
-    const msg = String(e?.message || e);
-    // In test mode, Resend blocks non-verified recipients: surface this clearly
-    if (msg.includes("You can only send testing emails")) {
-      const err = new Error("EMAIL_DOMAIN_UNVERIFIED");
-      (err as any).original = e;
-      throw err; // do not silently fall back; caller should handle
-    }
-    console.warn("[email] Resend failed, trying SendGrid…", msg);
+  if (SENDGRID_API_KEY) {
+    try { return await sendViaSendGrid(to, subject, html); }
+    catch (e2) { console.warn("[email] SendGrid failed, trying SMTP…", String(e2)); }
   }
-
-  try {
-    if (SENDGRID_API_KEY) return await sendViaSendGrid(to, subject, html);
-  } catch (e2) {
-    console.warn("[email] SendGrid failed, trying SMTP…", String(e2));
-  }
-
   return sendMailWithFallback(to, subject, html);
 }
 
@@ -309,7 +332,7 @@ export const sendVerificationEmail = async (email: string, token: string, userna
   } catch (error: any) {
     const msg = error?.message ?? String(error);
     if (msg === "EMAIL_DOMAIN_UNVERIFIED") {
-      throw new Error("Email domain not verified on provider; use a provider-owned sender (e.g., onboarding@resend.dev) or finish DNS.");
+      throw new Error("Email domain not verified on provider; use a provider-owned sender or finish DNS.");
     }
     console.error("Verification email send failed:", msg);
     throw new Error("Failed to send verification email");
@@ -350,7 +373,7 @@ export const sendPasswordResetEmail = async (email: string, token: string, usern
   } catch (error: any) {
     const msg = error?.message ?? String(error);
     if (msg === "EMAIL_DOMAIN_UNVERIFIED") {
-      throw new Error("Email domain not verified on provider; use a provider-owned sender (e.g., onboarding@resend.dev) or finish DNS.");
+      throw new Error("Email domain not verified on provider; use a provider-owned sender or finish DNS.");
     }
     console.error("Password reset email send failed:", msg);
     throw new Error("Failed to send password reset email");
@@ -399,7 +422,7 @@ export const sendWelcomeEmail = async (email: string, username: string, role: st
   } catch (error: any) {
     const msg = error?.message ?? String(error);
     if (msg === "EMAIL_DOMAIN_UNVERIFIED") {
-      throw new Error("Email domain not verified on provider; use a provider-owned sender (e.g., onboarding@resend.dev) or finish DNS.");
+      throw new Error("Email domain not verified on provider; use a provider-owned sender or finish DNS.");
     }
     console.error("Welcome email send failed:", msg);
     throw new Error("Failed to send welcome email");
