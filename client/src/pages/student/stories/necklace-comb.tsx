@@ -77,7 +77,9 @@ export default function NecklaceCombStory() {
   const [pendingSide, setPendingSide] = useState<null | 'left' | 'right'>(null);
   const [quizPageIndex, setQuizPageIndex] = useState<number | null>(null);
 
-  const [isMuted, setIsMuted] = useState(false);
+  // Start muted so browsers allow autoplay; user can unmute via the volume button
+  const [isMuted, setIsMuted] = useState(true);
+  const bgAudioRef = useRef<HTMLAudioElement | null>(null);
   const [isFlipping, setIsFlipping] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isStoryComplete, setIsStoryComplete] = useState(false);
@@ -287,7 +289,20 @@ export default function NecklaceCombStory() {
     }
   };
 
-  const toggleMute = () => setIsMuted(v => !v);
+  const toggleMute = () => {
+    setIsMuted(v => {
+      const next = !v;
+      const el = bgAudioRef.current;
+      if (el) {
+        el.muted = next; // reflect immediately
+        if (!next) {
+          // attempt playback when unmuting; catch to avoid uncaught promise in some browsers
+            el.play().catch(() => {});
+        }
+      }
+      return next;
+    });
+  };
   const restartStory = () => {
     setSpreadStart(0);
     setRightUnlocked(false);
@@ -544,11 +559,35 @@ export default function NecklaceCombStory() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Ensure audio starts playing (muted) after component mounts & pages load
+  useEffect(() => {
+    const el = bgAudioRef.current;
+    if (!el) return;
+    el.muted = isMuted;
+    if (!isMuted) {
+      el.play().catch(() => {});
+    } else {
+      // still call play() muted to keep it primed in some browsers
+      el.play().catch(() => {});
+    }
+  }, [isMuted]);
+
   return (
     <div
       ref={rootRef}
       className={`necklace-comb-page min-h-screen flex flex-col kid-theme ${isFullscreen ? 'book-fullscreen-mode' : ''} ${isBooting ? 'nc-booting' : ''}`}
     >
+      {/* Background music */}
+      <audio
+        ref={bgAudioRef}
+        src="/audio/twinkle.mp3"
+        loop
+        preload="auto"
+        // muted attribute bound dynamically via ref/effect; keep default muted for SSR hydration safety
+        muted
+        aria-label="Background music"
+        style={{ display: 'none' }}
+      />
 
       {/* Background layers */}
       <div className="nc-bg-video-wrap" aria-hidden="true">
