@@ -450,7 +450,19 @@ export default function EditBook() {
 
   const handlePageSave = (pageData: PageFormValues) => {
     const scrollY = window.scrollY;
-    setPages(prev => prev.map(p => (p.pageNumber === pageData.pageNumber ? { ...p, ...pageData, dirty: true, lastTouched: Date.now() } as any : p)));
+    setPages(prev => {
+      const found = prev.some(p => (p.id && pageData.id && p.id === pageData.id) || (p._tempId && pageData._tempId && p._tempId === pageData._tempId));
+      if (found) {
+        return prev.map(p => {
+          if ((p.id && pageData.id && p.id === pageData.id) || (p._tempId && pageData._tempId && p._tempId === pageData._tempId)) {
+            return { ...p, ...pageData, dirty: true, lastTouched: Date.now() } as any;
+          }
+          return p;
+        });
+      }
+      // fallback: match by pageNumber
+      return prev.map(p => (p.pageNumber === pageData.pageNumber ? { ...p, ...pageData, dirty: true, lastTouched: Date.now() } as any : p));
+    });
     if (pageData.showNotification) {
       toast({ title: '✅ Page Saved', description: 'Page changes saved locally. Click "Save Changes" to update the book.' });
     }
