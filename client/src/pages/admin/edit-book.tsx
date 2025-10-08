@@ -1,5 +1,5 @@
 // == IMPORTS & DEPENDENCIES ==
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import Header from '@/components/layout/Header';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from '@/lib/motionShim';
 
 // == HELPERS (Cloudinary upload) ==
 function getToken() {
@@ -117,6 +117,7 @@ export default function EditBook() {
 
   // == STATE ==
   const [pages, setPages] = useState<PageFormValues[]>([]);
+  const [lastBulkSaveAt, setLastBulkSaveAt] = useState<number>(0);
   const [shuffleAll, setShuffleAll] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
   const [audioUploading, setAudioUploading] = useState(false);
@@ -219,6 +220,7 @@ export default function EditBook() {
     if (Array.isArray(pagesData)) {
       const formatted = pagesData.map((p: any) => ({
         id: p.id,
+        _tempId: `page-${p.id ?? p.pageNumber}`,
         pageNumber: p.pageNumber,
         title: p.title,
         content: p.content,
@@ -334,6 +336,35 @@ export default function EditBook() {
     },
   });
 
+  // Manual bulk pages mutation (explicit user action only)
+  const bulkPagesMutation = useMutation({
+    mutationFn: async (dirtyPages: any[]) => apiRequest('PUT', `/api/books/${bookId}/pages/bulk`, { pages: dirtyPages }),
+    onSuccess: (res: any) => {
+      if (res?.pages) {
+        // replace local pages with canonical pages from server and clear dirty flags
+        setPages(res.pages.map((p: any) => ({ ...p, dirty: false })));
+        toast({ title: '✅ Pages Synced', description: 'All changed pages saved.' });
+      }
+    },
+    onError: (e: any) => toast({ variant: 'destructive', title: '❌ Page Sync Failed', description: e?.message || 'Try again.' })
+  });
+
+  const saveAllDirtyPages = async () => {
+    const dirty = pages.filter((p: any) => p.dirty);
+    if (dirty.length === 0) {
+      toast({ title: 'No page changes', description: 'There are no unsaved page edits.' });
+      return;
+    }
+    try {
+      await bulkPagesMutation.mutateAsync(dirty);
+    } catch (e) {
+      // error handled by mutation onError
+    }
+  };
+
+  // Autosave/bulk logic removed per request: pages will only be saved
+  // when the user clicks the Save Changes button (or individual PageForm Save).
+
   // Save badge mappings (skip silently if endpoint missing)
   const saveBadgesMutation = useMutation({
     mutationFn: async () => {
@@ -369,6 +400,7 @@ export default function EditBook() {
       }
 
       await updateBookMutation.mutateAsync(data);
+      // Save pages individually (no autosave/bulk). This ensures predictable behavior.
       for (const page of pages) await updatePagesMutation.mutateAsync(page);
       await saveBadgesMutation.mutateAsync();
 
@@ -391,15 +423,35 @@ export default function EditBook() {
       newPageNumber++;
     }
     
-    const newPage: PageFormValues = { pageNumber: newPageNumber, title: '', content: '', imageUrl: '', imagePublicId: '', questions: [] };
+    const newPage: PageFormValues = { _tempId: `temp-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`, pageNumber: newPageNumber, title: '', content: '', imageUrl: '', imagePublicId: '', questions: [] };
     setPages([...pages, newPage]);
   };
 
   const handlePageSave = (pageData: PageFormValues) => {
-    setPages(prev => prev.map(p => (p.pageNumber === pageData.pageNumber ? pageData : p)));
+    const scrollY = window.scrollY;
+    setPages(prev => {
+      let changed = false;
+      const now = Date.now();
+      const next = prev.map(p => {
+        const match = (p.id && pageData.id && p.id === pageData.id) || (p._tempId && pageData._tempId && p._tempId === pageData._tempId) || p.pageNumber === pageData.pageNumber;
+        if (!match) return p;
+        const merged: any = { ...p, ...pageData, dirty: true, lastTouched: now };
+        // quick shallow compare to avoid unnecessary re-render
+        const keys = Object.keys(merged) as (keyof typeof merged)[];
+        for (const k of keys) {
+          if ((p as any)[k] !== merged[k]) {
+            changed = true;
+            return merged;
+          }
+        }
+        return p; // identical -> no change
+      });
+      return changed ? next : prev;
+    });
     if (pageData.showNotification) {
       toast({ title: '✅ Page Saved', description: 'Page changes saved locally. Click "Save Changes" to update the book.' });
     }
+    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: scrollY })));
   };
 
   const handleRemovePage = (pageNumber: number) => {
@@ -461,7 +513,7 @@ export default function EditBook() {
           <div className="flex items-center justify-center mb-3">
             <GraduationCap className="h-7 w-7 text-ilaw-gold mr-2" />
             <span className="text-sm font-sans font-bold text-ilaw-gold tracking-wide uppercase">
-              Ilaw ng Bayan Learning Institute
+              Adonai And Grace Inc.
             </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-sans font-bold text-center">✏️ Edit Book</h1>
@@ -958,11 +1010,11 @@ export default function EditBook() {
                   ) : (
                     <div className="space-y-4">
                       <AnimatePresence initial={false}>
-                        {pages
+                        {[...pages]
                           .sort((a, b) => a.pageNumber - b.pageNumber)
                           .map((page) => (
                             <motion.div
-                              key={page.pageNumber}
+                              key={page.id ?? (page as any)._tempId ?? `pn-${page.pageNumber}`}
                               variants={itemFade}
                               initial="hidden"
                               animate="visible"
@@ -1008,6 +1060,7 @@ export default function EditBook() {
         >
           <div className="container max-w-5xl mx-auto">
             <div className="rounded-xl border-2 border-brand-gold-300 bg-white/90 backdrop-blur p-3 shadow-lg flex items-center justify-end gap-3">
+              {/* Save All Pages (bulk autosave removed) */}
               <Button
                 variant="outline"
                 onClick={() => navigate('/admin/books')}
