@@ -1,5 +1,6 @@
 // == IMPORTS & DEPENDENCIES ==
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -453,6 +454,14 @@ export default function EditBook() {
     }
     requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: scrollY })));
   };
+
+  // Memoize sorted pages and strip volatile fields before passing to PageForm
+  const sortedPages = useMemo(() => {
+    return [...pages].sort((a, b) => a.pageNumber - b.pageNumber).map(p => {
+      const { id, _tempId, pageNumber, title, content, imageUrl, imagePublicId, questions } = p as any;
+      return { id, _tempId, pageNumber, title, content, imageUrl, imagePublicId, questions } as PageFormValues;
+    });
+  }, [pages]);
 
   const handleRemovePage = (pageNumber: number) => {
     const pageToRemove = pages.find(p => p.pageNumber === pageNumber);
@@ -1010,26 +1019,24 @@ export default function EditBook() {
                   ) : (
                     <div className="space-y-4">
                       <AnimatePresence initial={false}>
-                        {[...pages]
-                          .sort((a, b) => a.pageNumber - b.pageNumber)
-                          .map((page) => (
-                            <motion.div
-                              key={page.id ?? (page as any)._tempId ?? `pn-${page.pageNumber}`}
-                              variants={itemFade}
-                              initial="hidden"
-                              animate="visible"
-                              exit="exit"
-                              layout
-                            >
-                              <PageForm
-                                initialValues={page}
-                                pageNumber={page.pageNumber}
-                                onSave={handlePageSave}
-                                onRemove={() => handleRemovePage(page.pageNumber)}
-                                showRemoveButton={pages.length > 1}
-                              />
-                            </motion.div>
-                          ))}
+                        {sortedPages.map((page) => (
+                          <motion.div
+                            key={page.id ?? (page as any)._tempId ?? `pn-${page.pageNumber}`}
+                            variants={itemFade}
+                            initial="hidden"
+                            animate="visible"
+                            exit="exit"
+                            // layout removed to avoid scroll jump / expensive reflow
+                          >
+                            <PageForm
+                              initialValues={page}
+                              pageNumber={page.pageNumber}
+                              onSave={handlePageSave}
+                              onRemove={() => handleRemovePage(page.pageNumber)}
+                              showRemoveButton={pages.length > 1}
+                            />
+                          </motion.div>
+                        ))}
                       </AnimatePresence>
 
                       <Button

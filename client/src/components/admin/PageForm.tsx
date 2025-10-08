@@ -120,7 +120,7 @@ async function uploadPageImage(file: File) {
   return data as { success: true; url: string; publicId: string };
 }
 
-export function PageForm({
+function PageFormComponent({
   initialValues,
   pageNumber,
   onSave,
@@ -791,3 +791,32 @@ export function PageForm({
     </motion.div>
   );
 }
+
+// Custom equality check to prevent unnecessary re-renders.
+// We only care if primitive fields in initialValues actually change (ignore dirty/lastTouched from parent),
+// or pageNumber / showRemoveButton toggles.
+export const PageForm = React.memo(PageFormComponent, (prev, next) => {
+  if (prev.pageNumber !== next.pageNumber) return false;
+  if (prev.showRemoveButton !== next.showRemoveButton) return false;
+  const prevInit = prev.initialValues;
+  const nextInit = next.initialValues;
+  if (!prevInit && !nextInit) return true;
+  if (!!prevInit !== !!nextInit) return false;
+  if (prevInit && nextInit) {
+    const keys: (keyof PageFormValues)[] = ['id','_tempId','pageNumber','title','content','imageUrl','imagePublicId'];
+    for (const k of keys) {
+      if ((prevInit as any)[k] !== (nextInit as any)[k]) return false;
+    }
+    // Shallow compare questions length + primitive question fields
+    const pq = prevInit.questions || [];
+    const nq = nextInit.questions || [];
+    if (pq.length !== nq.length) return false;
+    for (let i=0;i<pq.length;i++) {
+      const a = pq[i];
+      const b = nq[i];
+      if (!b) return false;
+      if (a.questionText !== b.questionText || a.answerType !== b.answerType || a.correctAnswer !== b.correctAnswer || a.options !== b.options) return false;
+    }
+  }
+  return true;
+});
