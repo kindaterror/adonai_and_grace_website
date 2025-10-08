@@ -336,51 +336,34 @@ export default function EditBook() {
     },
   });
 
-  // Bulk pages mutation (dirty pages only)
+  // Manual bulk pages mutation (explicit user action only)
   const bulkPagesMutation = useMutation({
     mutationFn: async (dirtyPages: any[]) => apiRequest('PUT', `/api/books/${bookId}/pages/bulk`, { pages: dirtyPages }),
     onSuccess: (res: any) => {
       if (res?.pages) {
+        // replace local pages with canonical pages from server and clear dirty flags
         setPages(res.pages.map((p: any) => ({ ...p, dirty: false })));
-        setLastBulkSaveAt(Date.now());
         toast({ title: '✅ Pages Synced', description: 'All changed pages saved.' });
       }
     },
     onError: (e: any) => toast({ variant: 'destructive', title: '❌ Page Sync Failed', description: e?.message || 'Try again.' })
   });
 
-  const saveAllDirtyPages = useCallback(() => {
+  const saveAllDirtyPages = async () => {
     const dirty = pages.filter((p: any) => p.dirty);
     if (dirty.length === 0) {
       toast({ title: 'No page changes', description: 'There are no unsaved page edits.' });
       return;
     }
-    bulkPagesMutation.mutate(dirty);
-  }, [pages, bulkPagesMutation, toast]);
+    try {
+      await bulkPagesMutation.mutateAsync(dirty);
+    } catch (e) {
+      // error handled by mutation onError
+    }
+  };
 
-  // Idle autosave loop (every 7s for pages idle >10s, spacing bulk saves 8s apart)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now();
-      if (now - lastBulkSaveAt < 8000) return;
-      const candidates = pages.filter((p: any) => p.dirty && (!p.lastTouched || now - p.lastTouched > 10000));
-      if (!candidates.length) return;
-      bulkPagesMutation.mutate(candidates);
-    }, 7000);
-    return () => clearInterval(interval);
-  }, [pages, bulkPagesMutation, lastBulkSaveAt]);
-
-  // Warn user before leaving if dirty pages
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (pages.some((p: any) => p.dirty)) {
-        e.preventDefault();
-        e.returnValue = 'You have unsaved page changes.';
-      }
-    };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [pages]);
+  // Autosave/bulk logic removed per request: pages will only be saved
+  // when the user clicks the Save Changes button (or individual PageForm Save).
 
   // Save badge mappings (skip silently if endpoint missing)
   const saveBadgesMutation = useMutation({
@@ -417,12 +400,8 @@ export default function EditBook() {
       }
 
       await updateBookMutation.mutateAsync(data);
-      const dirty = pages.filter((p: any) => p.dirty);
-      if (dirty.length) {
-        try { await bulkPagesMutation.mutateAsync(dirty); } catch {/* handled in mutation */}
-      } else {
-        for (const page of pages) await updatePagesMutation.mutateAsync(page);
-      }
+      // Save pages individually (no autosave/bulk). This ensures predictable behavior.
+      for (const page of pages) await updatePagesMutation.mutateAsync(page);
       await saveBadgesMutation.mutateAsync();
 
       navigate('/admin/books');
@@ -1075,15 +1054,7 @@ export default function EditBook() {
         >
           <div className="container max-w-5xl mx-auto">
             <div className="rounded-xl border-2 border-brand-gold-300 bg-white/90 backdrop-blur p-3 shadow-lg flex items-center justify-end gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={saveAllDirtyPages}
-                className="border-2 border-brand-gold-300 text-ilaw-navy hover:bg-brand-gold-50 font-sans font-bold"
-                disabled={bulkPagesMutation.isPending}
-              >
-                {bulkPagesMutation.isPending ? 'Syncing Pages…' : 'Save All Pages'}
-              </Button>
+              {/* Save All Pages (bulk autosave removed) */}
               <Button
                 variant="outline"
                 onClick={() => navigate('/admin/books')}
