@@ -1,5 +1,5 @@
 // src/pages/teacher/TeacherEditBook.tsx
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import Header from "@/components/layout/Header";
-import { motion, AnimatePresence } from "@/lib/motionShim";
+import { motion, AnimatePresence } from "framer-motion";
 
 /* =================== Helpers (Cloudinary upload) =================== */
 function getToken() {
@@ -135,7 +135,6 @@ export default function TeacherEditBook() {
 
   /* ========== Local state ========== */
   const [pages, setPages] = useState<PageFormValues[]>([]);
-  const [lastBulkSaveAt, setLastBulkSaveAt] = useState<number>(0);
   const [shuffleAll] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
   const [audioUploading, setAudioUploading] = useState(false);
@@ -224,7 +223,6 @@ export default function TeacherEditBook() {
     if (Array.isArray(pagesData)) {
       const formatted = pagesData.map((p: any) => ({
         id: p.id,
-        _tempId: `page-${p.id ?? p.pageNumber}`,
         pageNumber: p.pageNumber,
         title: p.title || "",
         content: p.content || "",
@@ -386,21 +384,18 @@ export default function TeacherEditBook() {
   /* ========== Page CRUD helpers ========== */
   const handleAddPage = () => {
     const newPageNumber = pages.length > 0 ? Math.max(...pages.map((p) => p.pageNumber)) + 1 : 1;
-    const newPage: PageFormValues = { _tempId: `temp-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`, pageNumber: newPageNumber, title: "", content: "", imageUrl: "", imagePublicId: "", questions: [] };
+    const newPage: PageFormValues = { pageNumber: newPageNumber, title: "", content: "", imageUrl: "", imagePublicId: "", questions: [] };
     setPages([...pages, newPage]);
   };
 
   const handlePageSave = (pageData: PageFormValues) => {
-    const scrollY = window.scrollY;
-    setPages((prev) => prev.map((p) => (p.pageNumber === pageData.pageNumber ? { ...p, ...pageData, dirty: true, lastTouched: Date.now() } as any : p)));
+    setPages((prev) => prev.map((p) => (p.pageNumber === pageData.pageNumber ? pageData : p)));
     if (pageData.showNotification) {
       toast({
         title: "✅ Page Saved",
         description: 'Page changes saved locally. Click "Save Changes" to update the book.',
       });
     }
-    // restore scroll to prevent jump-to-top sensation when React re-renders list
-    requestAnimationFrame(() => window.scrollTo({ top: scrollY }));
   };
 
   const handleRemovePage = (pageNumber: number) => {
@@ -415,57 +410,6 @@ export default function TeacherEditBook() {
     saveBadgesMutation.isPending ||
     coverUploading ||
     audioUploading;
-
-  // Bulk pages mutation (dirty pages only)
-  const bulkPagesMutation = useMutation({
-    mutationFn: async (dirtyPages: any[]) => {
-      return apiRequest("PUT", `/api/books/${bookId}/pages/bulk`, { pages: dirtyPages });
-    },
-    onSuccess: (res: any) => {
-      if (res?.pages) {
-        // Replace local pages with canonical response, mark clean
-        setPages(res.pages.map((p: any) => ({ ...p, dirty: false })));
-        setLastBulkSaveAt(Date.now());
-        toast({ title: "✅ Pages Synced", description: "All changed pages saved." });
-      }
-    },
-    onError: (e: any) => {
-      toast({ variant: "destructive", title: "❌ Page Sync Failed", description: e?.message || "Try again." });
-    }
-  });
-
-  const saveAllDirtyPages = useCallback(() => {
-    const dirty = pages.filter((p: any) => p.dirty);
-    if (dirty.length === 0) {
-      toast({ title: "No page changes", description: "There are no unsaved page edits." });
-      return;
-    }
-    bulkPagesMutation.mutate(dirty);
-  }, [pages, bulkPagesMutation, toast]);
-
-  // Idle autosave loop: every 7s check for pages idle >10s & not saved within last 20s
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now();
-      if (now - lastBulkSaveAt < 8000) return; // avoid spamming right after a save
-      const candidates = pages.filter((p: any) => p.dirty && (!p.lastTouched || now - p.lastTouched > 10000));
-      if (candidates.length === 0) return;
-      bulkPagesMutation.mutate(candidates);
-    }, 7000);
-    return () => clearInterval(interval);
-  }, [pages, bulkPagesMutation, lastBulkSaveAt]);
-
-  // Warn on unload if dirty pages
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (pages.some((p: any) => p.dirty)) {
-        e.preventDefault();
-        e.returnValue = "You have unsaved page changes.";
-      }
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [pages]);
 
   /* ========== Loading / Not found ========== */
   if (isLoadingBook || isLoadingPages) {
@@ -513,7 +457,7 @@ export default function TeacherEditBook() {
           <div className="flex items-center justify-center mb-3">
             <GraduationCap className="h-7 w-7 text-ilaw-gold mr-2" />
             <span className="text-sm font-sans font-bold text-ilaw-gold tracking-wide uppercase">
-              Adonai And Grace Inc.
+              Ilaw ng Bayan Learning Institute
             </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-sans font-bold text-center">✏️ Edit Book</h1>
@@ -1041,10 +985,10 @@ export default function TeacherEditBook() {
                   ) : (
                     <div className="space-y-4">
                       <AnimatePresence initial={false}>
-                        {[...pages]
+                        {pages
                           .sort((a, b) => a.pageNumber - b.pageNumber)
                           .map((page) => (
-                            <motion.div key={page.id ?? page._tempId ?? `pn-${page.pageNumber}`} variants={itemFade} initial="hidden" animate="visible" exit="exit" layout>
+                            <motion.div key={page.pageNumber} variants={itemFade} initial="hidden" animate="visible" exit="exit" layout>
                               <PageForm
                                 initialValues={page}
                                 pageNumber={page.pageNumber}
@@ -1079,15 +1023,6 @@ export default function TeacherEditBook() {
         <motion.div variants={fadeInFast} initial="hidden" animate="visible" className="sticky bottom-4">
           <div className="container max-w-5xl mx-auto">
             <div className="rounded-xl border-2 border-brand-navy-200 bg-white/90 backdrop-blur p-3 shadow-lg flex items-center justify-end gap-3">
-                      <Button
-                        type="button"
-                        onClick={saveAllDirtyPages}
-                        variant="outline"
-                        className="border-2 border-brand-navy-200 text-ilaw-navy hover:bg-brand-navy-50 font-sans font-bold"
-                        disabled={bulkPagesMutation.isPending}
-                      >
-                        {bulkPagesMutation.isPending ? "Syncing Pages..." : "Save All Pages"}
-                      </Button>
               <Button
                 variant="outline"
                 onClick={() => navigate("/teacher/books")}

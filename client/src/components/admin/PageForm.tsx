@@ -1,15 +1,5 @@
-/**
- * PageForm (updated)
- * Key fixes:
- * 1. Removed delayed isInitialLoad timeout (could feel like a "restart") and simplified initial load logic.
- * 2. Added stable temp id ref (can be used by parent as a reliable key to avoid remounts when pageNumber changes).
- * 3. Properly tracks unsaved changes for title/content edits (previously only images/questions triggered it).
- * 4. Narrowed effects so they don't re-run unnecessarily (avoids perceived full re-init).
- * 5. Added optional onDirty flag logic (internal) – keeps behavior lightweight.
- * 6. Defensive checks around Cloudinary preview selection.
- */
-
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+// == IMPORTS & DEPENDENCIES ==
+import React, { useState, useRef, useEffect } from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -28,9 +18,9 @@ import {
   FormMessage,
   FormDescription
 } from '@/components/ui/form';
-import { motion, AnimatePresence } from '@/lib/motionShim';
+import { motion, AnimatePresence } from 'framer-motion';
 
-/** ================= Cloudinary helpers ================= */
+/** ================= Cloudinary helpers (Vite + Next-safe) ================= */
 const cloud =
   ((typeof import.meta !== 'undefined' ? (import.meta as any)?.env : undefined)
     ?.VITE_CLOUDINARY_CLOUD_NAME as string | undefined) ||
@@ -68,7 +58,6 @@ export interface PageFormValues extends z.infer<typeof pageSchema> {
   id?: number;
   questions?: Question[];
   showNotification?: boolean;
-  _tempId?: string;
 }
 
 interface PageFormProps {
@@ -79,7 +68,7 @@ interface PageFormProps {
   showRemoveButton?: boolean;
 }
 
-// == Motion presets ==
+// == Motion presets (UI-only) ==
 const fadeCard = {
   hidden: { opacity: 0, y: 8 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } },
@@ -117,9 +106,11 @@ async function uploadPageImage(file: File) {
   if (!resp.ok || !data?.success) {
     throw new Error(data?.error || 'Image upload failed');
   }
+  // { success, url, publicId, ... }
   return data as { success: true; url: string; publicId: string };
 }
 
+// == PAGE FORM COMPONENT ==
 export function PageForm({
   initialValues,
   pageNumber,
@@ -127,15 +118,10 @@ export function PageForm({
   onRemove,
   showRemoveButton = true
 }: PageFormProps) {
+
+  // == State & Refs ==
   const { toast } = useToast();
-
-  // Stable internal id (can be used by parent as key: p.id ?? stableTempIdRef.current)
-  const stableTempIdRef = useRef(
-    initialValues?.id
-      ? `page-${initialValues.id}`
-      : `temp-${(typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2))}`
-  );
-
+  const [hasQuestions, setHasQuestions] = useState(false);
   const [questions, setQuestions] = useState<Question[]>(initialValues?.questions || []);
   const [imagePreview, setImagePreview] = useState<string | null>(initialValues?.imageUrl || null);
   const [imageUploading, setImageUploading] = useState(false);
@@ -148,7 +134,16 @@ export function PageForm({
   const [lastQuestionsChange, setLastQuestionsChange] = useState(0);
   const [lastImageChange, setLastImageChange] = useState(0);
 
-  // Initialize form
+  // == Effects ==
+  useEffect(() => {
+    if (initialValues?.questions && initialValues.questions.length > 0) {
+      setQuestions(initialValues.questions);
+      setHasQuestions(true);
+    }
+    setTimeout(() => setIsInitialLoad(false), 1000);
+  }, [initialValues?.questions]);
+
+  // == Form Initialization ==
   const form = useForm<PageFormValues>({
     resolver: zodResolver(pageSchema),
     defaultValues: {
@@ -160,31 +155,13 @@ export function PageForm({
     },
   });
 
-  // Snapshot of initial values for change detection
-  const initialSnapshotRef = useRef(form.getValues());
-
-  // Mark end of initial mount quickly (no delayed timer)
-  useEffect(() => {
-    setIsInitialLoad(false);
-  }, []);
-
-  // Sync questions only on first mount or when initialValues.id changes (avoid resets)
-  const prevInitIdRef = useRef<number | undefined>(initialValues?.id);
-  useEffect(() => {
-    if (initialValues?.id !== prevInitIdRef.current) {
-      setQuestions(initialValues?.questions || []);
-      prevInitIdRef.current = initialValues?.id;
-    }
-  }, [initialValues?.id, initialValues?.questions]);
-
-  // Cloudinary preview logic
+  // Prefer Cloudinary preview if a publicId is present; fall back to local upload preview; finally raw URL field
   const cloudPublicId = form.watch('imagePublicId');
   const watchedImageUrl = form.watch('imageUrl');
   const transformed = cloudPublicId ? clUrl(cloudPublicId) : '';
-  const fallbackRaw =
-    imagePreview ||
-    (watchedImageUrl && /^https?:\/\//i.test(watchedImageUrl) ? watchedImageUrl : '');
+  const fallbackRaw = imagePreview || (watchedImageUrl && /^https?:\/\//i.test(watchedImageUrl) ? watchedImageUrl : '');
 
+  // Decide which to show: try transformed once; if it errors, stick to fallbackRaw
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (transformed && !previewTriedTransformed) {
@@ -198,55 +175,71 @@ export function PageForm({
     } else if (!previewSrc) {
       setPreviewSrc(fallbackRaw || null);
     }
-  }, [transformed, fallbackRaw, previewSrc, previewTriedTransformed]);
+  }, [transformed, fallbackRaw]);
 
-  // Track form field changes for unsaved state (title/content/image)
+  // == Auto-Save: Content Changes ==
   useEffect(() => {
-    const subscription = form.watch((current) => {
+    const subscription = form.watch((values, { type }) => {
       if (isInitialLoad) return;
-      const hasDiff =
-        JSON.stringify(current) !== JSON.stringify(initialSnapshotRef.current);
-      if (hasDiff) setHasUnsavedChanges(true);
+
+      if (values.content && values.content.trim() && (type === 'change')) {
+        setHasUnsavedChanges(true);
+
+        const pageData: PageFormValues = {
+          id: initialValues?.id, // preserve existing page id so we update instead of creating duplicate
+            pageNumber,
+            title: values.title ?? '',
+            content: (values.content ?? "") as string,
+            imageUrl: values.imageUrl ?? '',
+            imagePublicId: values.imagePublicId ?? '',
+            questions: questions.length > 0 ? questions : undefined,
+            showNotification: false
+          };
+
+        const timeoutId = setTimeout(() => {
+          onSave(pageData);
+          setHasUnsavedChanges(false);
+        }, 1200);
+
+        return () => clearTimeout(timeoutId);
+      }
     });
+
     return () => subscription.unsubscribe();
-  }, [form, isInitialLoad]);
+  }, [form, pageNumber, questions, onSave, isInitialLoad, hasUnsavedChanges]);
 
-  // == Manual Save Builder ==
-  const buildPayload = useCallback(
-    (showNotification: boolean): PageFormValues | null => {
-      const v = form.getValues();
-      if (!v.content || !v.content.trim()) return null;
-      return {
+  // == Auto-Save: Question Changes ==
+  useEffect(() => {
+    if (isInitialLoad) return;
+
+    const formValues = form.getValues();
+    if (formValues.content && formValues.content.trim()) {
+      setHasUnsavedChanges(true);
+
+      const now = Date.now();
+      const shouldShowNotification = now - lastQuestionsChange < 500;
+
+      const pageData: PageFormValues = {
         id: initialValues?.id,
-        _tempId: stableTempIdRef.current,
-        pageNumber,
-        title: v.title ?? '',
-        content: v.content ?? '',
-        imageUrl: v.imageUrl ?? '',
-        imagePublicId: v.imagePublicId ?? '',
-        questions: questions.length > 0 ? questions : undefined,
-        showNotification
-      };
-    },
-    [form, initialValues?.id, pageNumber, questions]
-  );
+          pageNumber,
+          title: formValues.title ?? '',
+          content: formValues.content ?? '',
+          imageUrl: formValues.imageUrl ?? '',
+          imagePublicId: formValues.imagePublicId ?? '',
+          questions: questions.length > 0 ? questions : undefined,
+          showNotification: shouldShowNotification
+        };
 
-  const handleManualSave = useCallback(() => {
-    const payload = buildPayload(true);
-    if (!payload) {
-      toast({
-        title: 'Content required',
-        description: 'Please add page content before saving.',
-        variant: 'destructive'
-      });
-      return;
+      const timeoutId = setTimeout(() => {
+        onSave(pageData);
+        setHasUnsavedChanges(false);
+      }, 500);
+
+      return () => clearTimeout(timeoutId);
     }
-    onSave(payload);
-    initialSnapshotRef.current = form.getValues();
-    setHasUnsavedChanges(false);
-  }, [buildPayload, onSave, toast, form]);
+  }, [questions, form, pageNumber, onSave, isInitialLoad, hasUnsavedChanges, lastQuestionsChange]);
 
-  // == Image Handling ==
+  // == Image Handling (via /api/upload) ==
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -262,29 +255,33 @@ export function PageForm({
 
     try {
       setImageUploading(true);
-      const { url, publicId } = await uploadPageImage(file);
+  const { url, publicId } = await uploadPageImage(file);
+
+      // set both URL and publicId
       form.setValue('imageUrl', url, { shouldDirty: true });
       form.setValue('imagePublicId', publicId ?? '', { shouldDirty: true });
       setImagePreview(url);
-      setPreviewSrc(url);
-      setPreviewTriedTransformed(false);
+  setPreviewSrc(url); // show raw uploaded image immediately
+  setPreviewTriedTransformed(false); // allow transformed retry for new upload
       setHasUnsavedChanges(true);
       setLastImageChange(Date.now());
 
-      // Notify parent with updated payload (include stable temp id)
-      const vals = form.getValues();
-      const payload: PageFormValues = {
+      const formValues = form.getValues();
+      const pageData: PageFormValues = {
         id: initialValues?.id,
-        _tempId: stableTempIdRef.current,
-        pageNumber,
-        title: vals.title ?? '',
-        content: vals.content ?? '',
-        imageUrl: url,
-        imagePublicId: publicId ?? '',
-        questions: questions.length > 0 ? questions : undefined,
-        showNotification: true,
-      };
-      onSave(payload);
+          pageNumber,
+          title: formValues.title ?? '',
+          content: formValues.content ?? '',
+          imageUrl: url,
+          imagePublicId: publicId ?? '',
+          questions: questions.length > 0 ? questions : undefined,
+          showNotification: true
+        };
+
+      setTimeout(() => {
+        onSave(pageData);
+        setHasUnsavedChanges(false);
+      }, 500);
 
       toast({ title: 'Image uploaded', description: 'Page image uploaded successfully.' });
     } catch (err: any) {
@@ -299,28 +296,33 @@ export function PageForm({
   };
 
   const clearImage = () => {
-    setImagePreview(null);
-    setPreviewSrc(null);
+  setImagePreview(null);
+  setPreviewSrc(null);
     form.setValue("imageUrl", "");
     form.setValue("imagePublicId", "");
     setHasUnsavedChanges(true);
     setLastImageChange(Date.now());
-    if (fileInputRef.current) fileInputRef.current.value = "";
 
-    // notify parent of cleared image
-    const vals = form.getValues();
-    const payload: PageFormValues = {
+    const formValues = form.getValues();
+    const pageData: PageFormValues = {
       id: initialValues?.id,
-      _tempId: stableTempIdRef.current,
-      pageNumber,
-      title: vals.title ?? '',
-      content: vals.content ?? '',
-      imageUrl: "",
-      imagePublicId: "",
-      questions: questions.length > 0 ? questions : undefined,
-      showNotification: true,
-    };
-    onSave(payload);
+        pageNumber,
+        title: formValues.title ?? '',
+        content: formValues.content ?? '',
+        imageUrl: "",
+        imagePublicId: "",
+        questions: questions.length > 0 ? questions : undefined,
+        showNotification: true
+      };
+
+    setTimeout(() => {
+      onSave(pageData);
+      setHasUnsavedChanges(false);
+    }, 500);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   // == Question Utilities ==
@@ -333,34 +335,35 @@ export function PageForm({
 
   // == Question Management ==
   const addQuestion = () => {
-    setQuestions(prev => [
-      ...prev,
+    setQuestions([
+      ...questions,
       { questionText: '', answerType: 'text', correctAnswer: '', options: '' }
     ]);
+    setHasQuestions(true);
     setHasUnsavedChanges(true);
     setLastQuestionsChange(Date.now());
   };
 
   const removeQuestion = (index: number) => {
-    setQuestions(prev => {
-      const updated = [...prev];
-      updated.splice(index, 1);
-      return updated;
-    });
+    const updated = [...questions];
+    updated.splice(index, 1);
+    setQuestions(updated);
     setHasUnsavedChanges(true);
     setLastQuestionsChange(Date.now());
+    if (updated.length === 0) setHasQuestions(false);
   };
 
   const updateQuestion = (index: number, field: keyof Question, value: string) => {
-    setQuestions(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      if (field === 'answerType' && value === 'multiple_choice') {
-        const opts = getOptionsList(updated[index].options);
-        if (opts.length === 0) updated[index].options = "Option 1\nOption 2\nOption 3";
-      }
-      return updated;
-    });
+    const updated = [...questions];
+    updated[index] = { ...updated[index], [field]: value };
+
+    if (field === 'answerType' && value === 'multiple_choice') {
+      const current = updated[index];
+      const opts = getOptionsList(current.options);
+      if (opts.length === 0) current.options = "Option 1\nOption 2\nOption 3";
+    }
+
+    setQuestions(updated);
     setHasUnsavedChanges(true);
     setLastQuestionsChange(Date.now());
   };
@@ -389,15 +392,15 @@ export function PageForm({
     updateQuestion(qi, 'options', opts.join('\n'));
   };
 
+  // == Render Component ==
   return (
     <motion.div
-      data-stable-id={stableTempIdRef.current}
       variants={fadeCard}
       initial="hidden"
       animate="visible"
       className="border-2 border-brand-gold-200 bg-white rounded-2xl shadow-lg mb-5"
     >
-      {/* Header */}
+      {/* == Page Header == */}
       <div className="border-b border-brand-gold-200 p-4">
         <div className="flex justify-between items-center">
           <h3 className="text-xl font-heading font-bold text-ilaw-navy flex items-center">
@@ -413,41 +416,34 @@ export function PageForm({
               </motion.span>
             )}
           </h3>
-          <div className="flex items-center gap-2">
+          {showRemoveButton && (
             <Button
               type="button"
-              variant="default"
+              variant="destructive"
               size="sm"
-              onClick={handleManualSave}
-              disabled={!hasUnsavedChanges || isInitialLoad}
-              className="bg-ilaw-gold hover:bg-amber-500 text-white font-heading font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+              onClick={onRemove}
+              className="bg-red-500 hover:bg-red-600 text-white font-heading font-bold"
             >
-              {hasUnsavedChanges ? 'Save Page' : 'Saved'}
+              <Trash2 className="h-4 w-4 mr-1" />
+              Remove Page
             </Button>
-            {showRemoveButton && (
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                onClick={onRemove}
-                className="bg-red-500 hover:bg-red-600 text-white font-heading font-bold"
-              >
-                <Trash2 className="h-4 w-4 mr-1" />
-                Remove Page
-              </Button>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Content */}
+      {/* == Form Content == */}
       <div className="p-4">
         <Form {...form}>
           <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-5">
+
+            {/* Hidden field for Cloudinary ID */}
             <FormField control={form.control} name="imagePublicId" render={({ field }) => (<input type="hidden" {...field} />)} />
 
+            {/* === Top Grid: fields (2 cols) + image (1 col) === */}
             <motion.div variants={sectionFade} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
+              {/* Left: fields */}
               <div className="md:col-span-2 flex flex-col gap-4 md:h-full">
+                {/* Title */}
                 <motion.div variants={itemFade}>
                   <FormField
                     control={form.control}
@@ -460,10 +456,7 @@ export function PageForm({
                             placeholder="Enter a title for this page"
                             {...field}
                             value={field.value ?? ''}
-                            onChange={(e) => {
-                              field.onChange(e.target.value);
-                              if (!isInitialLoad) setHasUnsavedChanges(true);
-                            }}
+                            onChange={(e) => field.onChange(e.target.value)}
                             className="border-2 border-brand-gold-200 focus:border-ilaw-gold"
                           />
                         </FormControl>
@@ -473,6 +466,7 @@ export function PageForm({
                   />
                 </motion.div>
 
+                {/* Content */}
                 <motion.div variants={itemFade}>
                   <FormField
                     control={form.control}
@@ -484,10 +478,6 @@ export function PageForm({
                           <Textarea
                             placeholder="Enter the content for this page..."
                             {...field}
-                            onChange={(e) => {
-                              field.onChange(e.target.value);
-                              if (!isInitialLoad) setHasUnsavedChanges(true);
-                            }}
                             className="border-2 border-brand-gold-200 focus:border-ilaw-gold flex-1 h-full min-h-[260px] md:min-h-0 resize-vertical md:resize-none"
                           />
                         </FormControl>
@@ -498,7 +488,7 @@ export function PageForm({
                 </motion.div>
               </div>
 
-              {/* Image */}
+              {/* Right: image panel */}
               <motion.div variants={itemFade} className="md:col-span-1 space-y-3">
                 <FormField
                   control={form.control}
@@ -507,6 +497,7 @@ export function PageForm({
                     <FormItem>
                       <FormLabel className="text-ilaw-navy font-heading font-bold">🖼️ Page Image</FormLabel>
                       <div className="space-y-3">
+                        {/* Preview */}
                         <AnimatePresence initial={false} mode="popLayout">
                           {previewSrc ? (
                             <motion.div
@@ -522,6 +513,7 @@ export function PageForm({
                                   alt="Page image preview"
                                   className="w-full h-full object-cover"
                                   onError={() => {
+                                    // fallback to raw if transformed failed
                                     if (previewSrc === transformed && fallbackRaw) {
                                       setPreviewSrc(fallbackRaw);
                                     }
@@ -585,6 +577,7 @@ export function PageForm({
                           )}
                         </AnimatePresence>
 
+                        {/* URL input */}
                         <div className="relative">
                           <FormControl>
                             <Input
@@ -595,6 +588,7 @@ export function PageForm({
                               onChange={(e) => {
                                 const v = e.target.value;
                                 field.onChange(v);
+                                // if user pastes a URL, clear publicId so preview uses URL
                                 if (v) form.setValue('imagePublicId', '');
                                 setImagePreview(v || null);
                                 setLastImageChange(Date.now());
@@ -615,7 +609,7 @@ export function PageForm({
               </motion.div>
             </motion.div>
 
-            {/* Questions */}
+            {/* == Questions Section == */}
             <motion.div variants={sectionFade} className="pt-5 border-t-2 border-brand-gold-200">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-heading font-bold text-ilaw-navy flex items-center">
@@ -710,10 +704,7 @@ export function PageForm({
                             <Label className="text-ilaw-navy font-heading font-bold">Options</Label>
                             <div className="border-2 border-brand-gold-200 rounded-xl mt-1 bg-white">
                               {getOptionsList(question.options).map((option, optionIdx) => (
-                                <div
-                                  key={optionIdx}
-                                  className="flex items-center p-3 border-b border-brand-gold-200 last:border-b-0"
-                                >
+                                <div key={optionIdx} className="flex items-center p-3 border-b border-brand-gold-200 last:border-b-0">
                                   <input
                                     type="radio"
                                     id={`question-${index}-option-${optionIdx}`}
@@ -777,11 +768,12 @@ export function PageForm({
               )}
             </motion.div>
 
+            {/* == Auto-Save Status == */}
             <motion.div variants={sectionFade} className="pt-5 border-t-2 border-brand-gold-200">
               <div className="bg-gradient-to-r from-brand-gold-50 to-brand-navy-50/40 border-2 border-brand-gold-200 rounded-xl p-3 text-center">
                 <p className="text-sm text-ilaw-navy font-medium flex items-center justify-center">
                   <Sparkles className="h-4 w-4 mr-2 text-ilaw-gold" />
-                  ✨ Edit your content then click the "Save Page" button at the top. No background autosave is running.
+                  ✨ Changes save automatically. Click "Save Changes" at the bottom to update the book.
                 </p>
               </div>
             </motion.div>
