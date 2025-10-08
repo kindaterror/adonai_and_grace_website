@@ -434,7 +434,7 @@ export default function EditBook() {
       if (found) {
         return prev.map(p => {
           if ((p.id && pageData.id && p.id === pageData.id) || (p._tempId && pageData._tempId && p._tempId === pageData._tempId)) {
-            return { ...p, ...pageData, dirty: true, lastTouched: Date.now() } as any;
+            return { ...p, ...pageData, dirty: true,  } as any;
           }
           return p;
         });
