@@ -1,12 +1,9 @@
 /**
- * PageForm (updated)
- * Key fixes:
- * 1. Removed delayed isInitialLoad timeout (could feel like a "restart") and simplified initial load logic.
- * 2. Added stable temp id ref (can be used by parent as a reliable key to avoid remounts when pageNumber changes).
- * 3. Properly tracks unsaved changes for title/content edits (previously only images/questions triggered it).
- * 4. Narrowed effects so they don't re-run unnecessarily (avoids perceived full re-init).
- * 5. Added optional onDirty flag logic (internal) – keeps behavior lightweight.
- * 6. Defensive checks around Cloudinary preview selection.
+ * PageForm (updated with stable keys)
+ * Fixes the "one letter per keystroke" issue by:
+ * - Adding a stable `id` to each Question and using key={q.id}
+ * - Keying option rows with `${q.id}-${i}`
+ * - Using `layout` on motion containers to avoid remounts while typing
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -50,6 +47,7 @@ const clUrl = (publicId?: string, w = 800, h = 450) => {
 
 // == TYPE DEFINITIONS ==
 export interface Question {
+  id: string;                 // NEW: stable id used for React keys
   questionText: string;
   answerType: string;
   correctAnswer?: string;
@@ -78,7 +76,7 @@ interface PageFormProps {
   onRemove: () => void;
   showRemoveButton?: boolean;
   enableAutosave?: boolean;           // if true, perform a silent autosave after inactivity
-  autosaveDelayMs?: number;            // inactivity threshold in ms (default 15000)
+  autosaveDelayMs?: number;           // inactivity threshold in ms (default 15000)
 }
 
 // == Motion presets ==
@@ -140,7 +138,21 @@ function PageFormComponent({
       : `temp-${(typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2))}`
   );
 
-  const [questions, setQuestions] = useState<Question[]>(initialValues?.questions || []);
+  // Seed questions with STABLE IDs
+  const seedWithIds = (qs?: Question[]) =>
+    (qs || []).map((q) => ({
+      id:
+        (q as any).id ||
+        ((typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2)),
+      questionText: q.questionText || '',
+      answerType: q.answerType || 'text',
+      correctAnswer: q.correctAnswer || '',
+      options: q.options || '',
+    }));
+
+  const [questions, setQuestions] = useState<Question[]>(seedWithIds(initialValues?.questions));
   const [imagePreview, setImagePreview] = useState<string | null>(initialValues?.imageUrl || null);
   const [imageUploading, setImageUploading] = useState(false);
   const [previewSrc, setPreviewSrc] = useState<string | null>(initialValues?.imageUrl || null);
@@ -176,10 +188,10 @@ function PageFormComponent({
   const prevInitIdRef = useRef<number | undefined>(initialValues?.id);
   useEffect(() => {
     if (initialValues?.id !== prevInitIdRef.current) {
-      setQuestions(initialValues?.questions || []);
+      setQuestions(seedWithIds(initialValues?.questions));
       prevInitIdRef.current = initialValues?.id;
     }
-  }, [initialValues?.id, initialValues?.questions]);
+  }, [initialValues?.id, initialValues?.questions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cloudinary preview logic
   const cloudPublicId = form.watch('imagePublicId');
@@ -203,8 +215,6 @@ function PageFormComponent({
       setPreviewSrc(fallbackRaw || null);
     }
   }, [transformed, fallbackRaw, previewSrc, previewTriedTransformed]);
-
-  // Removed heavy JSON stringify watcher. We explicitly flag unsaved in onChange handlers.
 
   // == Manual Save Builder ==
   const buildPayload = useCallback(
@@ -348,10 +358,17 @@ function PageFormComponent({
 
   // == Question Management ==
   const addQuestion = () => {
-    setQuestions(prev => [
-      ...prev,
-      { questionText: '', answerType: 'text', correctAnswer: '', options: '' }
-    ]);
+    const newQuestion: Question = {
+      id:
+        (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2),
+      questionText: '',
+      answerType: 'text',
+      correctAnswer: '',
+      options: ''
+    };
+    setQuestions(prev => [...prev, newQuestion]);
     setHasUnsavedChanges(true);
     setLastQuestionsChange(Date.now());
   };
@@ -369,11 +386,12 @@ function PageFormComponent({
   const updateQuestion = (index: number, field: keyof Question, value: string) => {
     setQuestions(prev => {
       const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
+      const nextQ = { ...updated[index], [field]: value };
       if (field === 'answerType' && value === 'multiple_choice') {
-        const opts = getOptionsList(updated[index].options);
-        if (opts.length === 0) updated[index].options = "Option 1\nOption 2\nOption 3";
+        const opts = getOptionsList(nextQ.options);
+        if (opts.length === 0) nextQ.options = "Option 1\nOption 2\nOption 3";
       }
+      updated[index] = nextQ;
       return updated;
     });
     setHasUnsavedChanges(true);
@@ -410,6 +428,7 @@ function PageFormComponent({
       variants={fadeCard}
       initial="hidden"
       animate="visible"
+      layout
       className="border-2 border-brand-gold-200 bg-white rounded-2xl shadow-lg mb-5"
     >
       {/* Header */}
@@ -463,7 +482,7 @@ function PageFormComponent({
 
             <motion.div variants={sectionFade} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
               <div className="md:col-span-2 flex flex-col gap-4 md:h-full">
-                <motion.div variants={itemFade}>
+                <motion.div variants={itemFade} layout>
                   <FormField
                     control={form.control}
                     name="title"
@@ -488,7 +507,7 @@ function PageFormComponent({
                   />
                 </motion.div>
 
-                <motion.div variants={itemFade}>
+                <motion.div variants={itemFade} layout>
                   <FormField
                     control={form.control}
                     name="content"
@@ -514,7 +533,7 @@ function PageFormComponent({
               </div>
 
               {/* Image */}
-              <motion.div variants={itemFade} className="md:col-span-1 space-y-3">
+              <motion.div variants={itemFade} className="md:col-span-1 space-y-3" layout>
                 <FormField
                   control={form.control}
                   name="imageUrl"
@@ -530,6 +549,7 @@ function PageFormComponent({
                               animate={{ opacity: 1, scale: 1 }}
                               exit={{ opacity: 0, scale: 0.98 }}
                               className="relative w-full"
+                              layout
                             >
                               <div className="relative aspect-[3/4] bg-brand-gold-50 rounded-xl overflow-hidden border-2 border-brand-gold-200">
                                 <img
@@ -561,6 +581,7 @@ function PageFormComponent({
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -6 }}
                               className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-brand-gold-300 rounded-xl bg-brand-gold-50"
+                              layout
                             >
                               <Image className="h-7 w-7 text-brand-gold-600 mb-2" />
                               <p className="text-sm text-brand-gold-600 font-medium mb-2">
@@ -600,7 +621,7 @@ function PageFormComponent({
                           )}
                         </AnimatePresence>
 
-                        <div className="relative">
+                        <div className="relative" layout-data="">
                           <FormControl>
                             <Input
                               placeholder="Or enter image URL"
@@ -631,7 +652,7 @@ function PageFormComponent({
             </motion.div>
 
             {/* Questions */}
-            <motion.div variants={sectionFade} className="pt-5 border-t-2 border-brand-gold-200">
+            <motion.div variants={sectionFade} className="pt-5 border-t-2 border-brand-gold-200" layout>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-heading font-bold text-ilaw-navy flex items-center">
                   ❓ Questions
@@ -651,11 +672,12 @@ function PageFormComponent({
               <AnimatePresence initial={false}>
                 {questions.map((question, index) => (
                   <motion.div
-                    key={index}
+                    key={question.id}          // ✅ stable key prevents remount on each keystroke
                     variants={itemFade}
                     initial="hidden"
                     animate="visible"
                     exit="exit"
+                    layout
                     className="p-4 border-2 border-brand-gold-200 rounded-xl mb-3 bg-brand-gold-50"
                   >
                     <div className="flex justify-between items-start mb-3">
@@ -698,11 +720,12 @@ function PageFormComponent({
                       <AnimatePresence initial={false} mode="popLayout">
                         {question.answerType === 'text' && (
                           <motion.div
-                            key={`text-${index}`}
+                            key={`text-${question.id}`}
                             variants={itemFade}
                             initial="hidden"
                             animate="visible"
                             exit="exit"
+                            layout
                           >
                             <Label className="text-ilaw-navy font-heading font-bold">Correct Answer</Label>
                             <Input
@@ -716,23 +739,24 @@ function PageFormComponent({
 
                         {question.answerType === 'multiple_choice' && (
                           <motion.div
-                            key={`mc-${index}`}
+                            key={`mc-${question.id}`}
                             variants={itemFade}
                             initial="hidden"
                             animate="visible"
                             exit="exit"
+                            layout
                           >
                             <Label className="text-ilaw-navy font-heading font-bold">Options</Label>
                             <div className="border-2 border-brand-gold-200 rounded-xl mt-1 bg-white">
                               {getOptionsList(question.options).map((option, optionIdx) => (
                                 <div
-                                  key={optionIdx}
+                                  key={`${question.id}-${optionIdx}`}  // ✅ stable option row key
                                   className="flex items-center p-3 border-b border-brand-gold-200 last:border-b-0"
                                 >
                                   <input
                                     type="radio"
-                                    id={`question-${index}-option-${optionIdx}`}
-                                    name={`question-${index}-correct`}
+                                    id={`question-${question.id}-option-${optionIdx}`}
+                                    name={`question-${question.id}-correct`} // use question.id in group name
                                     className="mr-3 h-4 w-4 text-ilaw-gold"
                                     checked={question.correctAnswer === option}
                                     onChange={() => updateQuestion(index, 'correctAnswer', option)}
@@ -836,10 +860,15 @@ export const PageForm = React.memo(PageFormComponent, (prev, next) => {
     const nq = nextInit.questions || [];
     if (pq.length !== nq.length) return false;
     for (let i=0;i<pq.length;i++) {
-      const a = pq[i];
-      const b = nq[i];
+      const a = pq[i] as any;
+      const b = nq[i] as any;
       if (!b) return false;
-      if (a.questionText !== b.questionText || a.answerType !== b.answerType || a.correctAnswer !== b.correctAnswer || a.options !== b.options) return false;
+      if (
+        a.questionText !== b.questionText ||
+        a.answerType !== b.answerType ||
+        a.correctAnswer !== b.correctAnswer ||
+        a.options !== b.options
+      ) return false;
     }
   }
   return true;

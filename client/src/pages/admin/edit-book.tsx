@@ -612,6 +612,7 @@ export default function EditBook() {
           className="mb-6"
         >
           <Button
+            type="button"
             variant="ghost"
             className="border-2 border-brand-gold-300 text-ilaw-navy hover:bg-brand-gold-50 font-sans font-bold"
             onClick={() => navigate('/admin/books')}
@@ -674,7 +675,7 @@ export default function EditBook() {
                             <FormLabel className="font-sans font-bold text-ilaw-navy">📚 Book Type</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
-                                <SelectTrigger className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
+                                <SelectTrigger type="button" className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
                                   <SelectValue placeholder="Select type" />
                                 </SelectTrigger>
                               </FormControl>
@@ -707,7 +708,7 @@ export default function EditBook() {
                                 <FormLabel className="font-sans font-bold text-ilaw-navy">📋 Subject Category</FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value}>
                                   <FormControl>
-                                    <SelectTrigger className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
+                                      <SelectTrigger type="button" className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
                                       <SelectValue placeholder="Select subject category" />
                                     </SelectTrigger>
                                   </FormControl>
@@ -743,7 +744,7 @@ export default function EditBook() {
                             <FormLabel className="font-sans font-bold text-ilaw-navy">🎓 Grade Level</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
-                                <SelectTrigger className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
+                                <SelectTrigger type="button" className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
                                   <SelectValue placeholder="Select grade" />
                                 </SelectTrigger>
                               </FormControl>
@@ -772,7 +773,7 @@ export default function EditBook() {
                             <FormLabel className="font-sans font-bold text-ilaw-navy">🧠 Quiz Mode</FormLabel>
                             <Select value={field.value} onValueChange={field.onChange}>
                               <FormControl>
-                                <SelectTrigger className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
+                                <SelectTrigger type="button" className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
                                   <SelectValue placeholder="Select quiz mode" />
                                 </SelectTrigger>
                               </FormControl>
@@ -930,7 +931,7 @@ export default function EditBook() {
                                               }))
                                             }
                                           >
-                                            <SelectTrigger className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
+                                            <SelectTrigger type="button" className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
                                               <SelectValue placeholder="Select method" />
                                             </SelectTrigger>
                                             <SelectContent className="border-2 border-brand-gold-200">
@@ -1088,6 +1089,7 @@ export default function EditBook() {
             <div className="rounded-xl border-2 border-brand-gold-300 bg-white/90 backdrop-blur p-3 shadow-lg flex items-center justify-end gap-3">
               {/* Save All Pages (bulk autosave removed) */}
               <Button
+                type="button"
                 variant="outline"
                 onClick={() => navigate('/admin/books')}
                 className="border-2 border-brand-gold-300 text-ilaw-navy hover:bg-brand-gold-50 font-sans font-bold"
@@ -1095,6 +1097,7 @@ export default function EditBook() {
                 Cancel
               </Button>
               <Button
+                type="submit"
                 onClick={form.handleSubmit(onSubmit)}
                 disabled={
                   updateBookMutation.isPending ||
