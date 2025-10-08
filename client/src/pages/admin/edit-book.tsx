@@ -463,6 +463,70 @@ export default function EditBook() {
     });
   }, [pages]);
 
+  // Memoized pages section to isolate re-renders away from the rest of the form.
+  const PagesSection = useMemo(() => {
+    const Comp: React.FC<{
+      pages: PageFormValues[];
+      onPageSave: (p: PageFormValues) => void;
+      onRemove: (pageNumber: number) => void;
+      onAdd: () => void;
+    }> = React.memo(({ pages, onPageSave, onRemove, onAdd }) => {
+      return (
+        <motion.div variants={itemFade} initial="hidden" animate="visible" className="border-2 border-brand-gold-200 bg-brand-gold-50 rounded-xl p-4">
+          <h3 className="text-lg font-sans font-bold mb-3 text-ilaw-navy flex items-center">
+            <BookOpen className="h-5 w-5 text-ilaw-gold mr-2" />
+            📄 Book Pages
+          </h3>
+          {pages.length === 0 ? (
+            <motion.div variants={itemFade} initial="hidden" animate="visible" className="bg-white p-6 rounded-xl text-center border-2 border-brand-gold-200">
+              <p className="text-brand-gold-600 font-sans font-bold mb-3">📝 No pages added yet</p>
+              <Button
+                type="button"
+                onClick={onAdd}
+                className="bg-gradient-to-r from-ilaw-navy to-ilaw-navy-600 hover:from-ilaw-navy-600 hover:to-ilaw-navy-700 text-white font-sans font-bold transition-transform hover:-translate-y-0.5"
+              >
+                <Plus className="h-4 w-4 mr-2" /> ✨ Add First Page
+              </Button>
+            </motion.div>
+          ) : (
+            <div className="space-y-4">
+              <AnimatePresence initial={false}>
+                {pages.map(page => (
+                  <motion.div
+                    key={page.id ?? (page as any)._tempId ?? `pn-${page.pageNumber}`}
+                    variants={itemFade}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                  >
+                    <PageForm
+                      initialValues={page}
+                      pageNumber={page.pageNumber}
+                      onSave={onPageSave}
+                      onRemove={() => onRemove(page.pageNumber)}
+                      showRemoveButton={pages.length > 1}
+                      enableAutosave
+                      autosaveDelayMs={25000}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onAdd}
+                className="w-full py-5 border-2 border-brand-gold-300 text-ilaw-navy hover:bg-brand-gold-100 font-sans font-bold transition-transform hover:-translate-y-0.5"
+              >
+                <Plus className="h-4 w-4 mr-2" /> ✨ Add Another Page
+              </Button>
+            </div>
+          )}
+        </motion.div>
+      );
+    });
+    return Comp;
+  }, []);
+
   const handleRemovePage = (pageNumber: number) => {
     const pageToRemove = pages.find(p => p.pageNumber === pageNumber);
     if (pageToRemove && pageToRemove.id) deletePageMutation.mutate(pageToRemove.id);
@@ -999,59 +1063,12 @@ export default function EditBook() {
                 </motion.div>
 
                 {/* == Pages Section == */}
-                <motion.div variants={itemFade} initial="hidden" animate="visible" className="border-2 border-brand-gold-200 bg-brand-gold-50 rounded-xl p-4">
-                  <h3 className="text-lg font-sans font-bold mb-3 text-ilaw-navy flex items-center">
-                    <BookOpen className="h-5 w-5 text-ilaw-gold mr-2" />
-                    📄 Book Pages
-                  </h3>
-
-                  {pages.length === 0 ? (
-                    <motion.div variants={itemFade} initial="hidden" animate="visible" className="bg-white p-6 rounded-xl text-center border-2 border-brand-gold-200">
-                      <p className="text-brand-gold-600 font-sans font-bold mb-3">📝 No pages added yet</p>
-                      <Button
-                        type="button"
-                        onClick={handleAddPage}
-                        className="bg-gradient-to-r from-ilaw-navy to-ilaw-navy-600 hover:from-ilaw-navy-600 hover:to-ilaw-navy-700 text-white font-sans font-bold transition-transform hover:-translate-y-0.5"
-                      >
-                        <Plus className="h-4 w-4 mr-2" /> ✨ Add First Page
-                      </Button>
-                    </motion.div>
-                  ) : (
-                    <div className="space-y-4">
-                      <AnimatePresence initial={false}>
-                        {sortedPages.map((page) => (
-                          <motion.div
-                            key={page.id ?? (page as any)._tempId ?? `pn-${page.pageNumber}`}
-                            variants={itemFade}
-                            initial="hidden"
-                            animate="visible"
-                            exit="exit"
-                            // layout removed to avoid scroll jump / expensive reflow
-                          >
-                            <PageForm
-                              initialValues={page}
-                              pageNumber={page.pageNumber}
-                              onSave={handlePageSave}
-                              onRemove={() => handleRemovePage(page.pageNumber)}
-                              showRemoveButton={pages.length > 1}
-                              enableAutosave
-                              autosaveDelayMs={25000}
-                            />
-                          </motion.div>
-                        ))}
-                      </AnimatePresence>
-
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleAddPage}
-                        className="w-full py-5 border-2 border-brand-gold-300 text-ilaw-navy hover:bg-brand-gold-100 font-sans font-bold transition-transform hover:-translate-y-0.5"
-                      >
-                        <Plus className="h-4 w-4 mr-2" /> ✨ Add Another Page
-                      </Button>
-                    </div>
-                  )}
-                </motion.div>
+                <PagesSection
+                  pages={sortedPages}
+                  onPageSave={handlePageSave}
+                  onRemove={handleRemovePage}
+                  onAdd={handleAddPage}
+                />
 
                 {/* spacer so sticky bar doesn't overlap */}
                 <div className="h-6" />
