@@ -1,5 +1,5 @@
 // src/pages/teacher/TeacherEditBook.tsx
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -135,7 +135,6 @@ export default function TeacherEditBook() {
 
   /* ========== Local state ========== */
   const [pages, setPages] = useState<PageFormValues[]>([]);
-  const [lastBulkSaveAt, setLastBulkSaveAt] = useState<number>(0);
   const [shuffleAll] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
   const [audioUploading, setAudioUploading] = useState(false);
@@ -224,7 +223,6 @@ export default function TeacherEditBook() {
     if (Array.isArray(pagesData)) {
       const formatted = pagesData.map((p: any) => ({
         id: p.id,
-        _tempId: `page-${p.id ?? p.pageNumber}`,
         pageNumber: p.pageNumber,
         title: p.title || "",
         content: p.content || "",
@@ -386,21 +384,18 @@ export default function TeacherEditBook() {
   /* ========== Page CRUD helpers ========== */
   const handleAddPage = () => {
     const newPageNumber = pages.length > 0 ? Math.max(...pages.map((p) => p.pageNumber)) + 1 : 1;
-    const newPage: PageFormValues = { _tempId: `temp-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`, pageNumber: newPageNumber, title: "", content: "", imageUrl: "", imagePublicId: "", questions: [] };
+    const newPage: PageFormValues = { pageNumber: newPageNumber, title: "", content: "", imageUrl: "", imagePublicId: "", questions: [] };
     setPages([...pages, newPage]);
   };
 
   const handlePageSave = (pageData: PageFormValues) => {
-    const scrollY = window.scrollY;
-    setPages((prev) => prev.map((p) => (p.pageNumber === pageData.pageNumber ? { ...p, ...pageData, dirty: true, lastTouched: Date.now() } as any : p)));
+    setPages((prev) => prev.map((p) => (p.pageNumber === pageData.pageNumber ? pageData : p)));
     if (pageData.showNotification) {
       toast({
         title: "✅ Page Saved",
         description: 'Page changes saved locally. Click "Save Changes" to update the book.',
       });
     }
-    // restore scroll to prevent jump-to-top sensation when React re-renders list
-    requestAnimationFrame(() => window.scrollTo({ top: scrollY }));
   };
 
   const handleRemovePage = (pageNumber: number) => {
@@ -415,10 +410,6 @@ export default function TeacherEditBook() {
     saveBadgesMutation.isPending ||
     coverUploading ||
     audioUploading;
-
-  // Note: Bulk autosave/idle sync removed here. Individual PageForm
-  // components handle local autosave (if enabled) and the user should
-  // use the global "Save Changes" button to persist the whole book.
 
   /* ========== Loading / Not found ========== */
   if (isLoadingBook || isLoadingPages) {
@@ -994,10 +985,10 @@ export default function TeacherEditBook() {
                   ) : (
                     <div className="space-y-4">
                       <AnimatePresence initial={false}>
-                        {[...pages]
+                        {pages
                           .sort((a, b) => a.pageNumber - b.pageNumber)
                           .map((page) => (
-                            <motion.div key={page.id ?? page._tempId ?? `pn-${page.pageNumber}`} variants={itemFade} initial="hidden" animate="visible" exit="exit" layout>
+                            <motion.div key={page.pageNumber} variants={itemFade} initial="hidden" animate="visible" exit="exit" layout>
                               <PageForm
                                 initialValues={page}
                                 pageNumber={page.pageNumber}
@@ -1032,7 +1023,6 @@ export default function TeacherEditBook() {
         <motion.div variants={fadeInFast} initial="hidden" animate="visible" className="sticky bottom-4">
           <div className="container max-w-5xl mx-auto">
             <div className="rounded-xl border-2 border-brand-navy-200 bg-white/90 backdrop-blur p-3 shadow-lg flex items-center justify-end gap-3">
-              {/* Removed bulk "Save All Pages" button - use global Save Changes only */}
               <Button
                 variant="outline"
                 onClick={() => navigate("/teacher/books")}

@@ -1,6 +1,5 @@
 // == IMPORTS & DEPENDENCIES ==
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import React from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -118,7 +117,6 @@ export default function EditBook() {
 
   // == STATE ==
   const [pages, setPages] = useState<PageFormValues[]>([]);
-  const [lastBulkSaveAt, setLastBulkSaveAt] = useState<number>(0);
   const [shuffleAll, setShuffleAll] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
   const [audioUploading, setAudioUploading] = useState(false);
@@ -221,7 +219,6 @@ export default function EditBook() {
     if (Array.isArray(pagesData)) {
       const formatted = pagesData.map((p: any) => ({
         id: p.id,
-        _tempId: `page-${p.id ?? p.pageNumber}`,
         pageNumber: p.pageNumber,
         title: p.title,
         content: p.content,
@@ -337,11 +334,6 @@ export default function EditBook() {
     },
   });
 
-  // Autosave/bulk logic intentionally removed here: pages are saved
-  // by individual PageForm components (their local autosave) and when the
-  // user clicks the global "Save Changes" button. Removing the bulk sync
-  // avoids duplicate saves.
-
   // Save badge mappings (skip silently if endpoint missing)
   const saveBadgesMutation = useMutation({
     mutationFn: async () => {
@@ -377,7 +369,6 @@ export default function EditBook() {
       }
 
       await updateBookMutation.mutateAsync(data);
-      // Save pages individually (no autosave/bulk). This ensures predictable behavior.
       for (const page of pages) await updatePagesMutation.mutateAsync(page);
       await saveBadgesMutation.mutateAsync();
 
@@ -400,106 +391,16 @@ export default function EditBook() {
       newPageNumber++;
     }
     
-    const newPage: PageFormValues = { _tempId: `temp-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`, pageNumber: newPageNumber, title: '', content: '', imageUrl: '', imagePublicId: '', questions: [] };
+    const newPage: PageFormValues = { pageNumber: newPageNumber, title: '', content: '', imageUrl: '', imagePublicId: '', questions: [] };
     setPages([...pages, newPage]);
   };
 
   const handlePageSave = (pageData: PageFormValues) => {
-    const scrollY = window.scrollY;
-    setPages(prev => {
-      let changed = false;
-      const now = Date.now();
-      const next = prev.map(p => {
-        const match = (p.id && pageData.id && p.id === pageData.id) || (p._tempId && pageData._tempId && p._tempId === pageData._tempId) || p.pageNumber === pageData.pageNumber;
-        if (!match) return p;
-        const merged: any = { ...p, ...pageData, dirty: true, lastTouched: now };
-        // quick shallow compare to avoid unnecessary re-render
-        const keys = Object.keys(merged) as (keyof typeof merged)[];
-        for (const k of keys) {
-          if ((p as any)[k] !== merged[k]) {
-            changed = true;
-            return merged;
-          }
-        }
-        return p; // identical -> no change
-      });
-      return changed ? next : prev;
-    });
+    setPages(prev => prev.map(p => (p.pageNumber === pageData.pageNumber ? pageData : p)));
     if (pageData.showNotification) {
       toast({ title: '✅ Page Saved', description: 'Page changes saved locally. Click "Save Changes" to update the book.' });
     }
-    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: scrollY })));
   };
-
-  // Memoize sorted pages and strip volatile fields before passing to PageForm
-  const sortedPages = useMemo(() => {
-    return [...pages].sort((a, b) => a.pageNumber - b.pageNumber).map(p => {
-      const { id, _tempId, pageNumber, title, content, imageUrl, imagePublicId, questions } = p as any;
-      return { id, _tempId, pageNumber, title, content, imageUrl, imagePublicId, questions } as PageFormValues;
-    });
-  }, [pages]);
-
-  // Memoized pages section to isolate re-renders away from the rest of the form.
-  const PagesSection = useMemo(() => {
-    const Comp: React.FC<{
-      pages: PageFormValues[];
-      onPageSave: (p: PageFormValues) => void;
-      onRemove: (pageNumber: number) => void;
-      onAdd: () => void;
-    }> = React.memo(({ pages, onPageSave, onRemove, onAdd }) => {
-      return (
-        <motion.div variants={itemFade} initial="hidden" animate="visible" className="border-2 border-brand-gold-200 bg-brand-gold-50 rounded-xl p-4">
-          <h3 className="text-lg font-sans font-bold mb-3 text-ilaw-navy flex items-center">
-            <BookOpen className="h-5 w-5 text-ilaw-gold mr-2" />
-            📄 Book Pages
-          </h3>
-          {pages.length === 0 ? (
-            <motion.div variants={itemFade} initial="hidden" animate="visible" className="bg-white p-6 rounded-xl text-center border-2 border-brand-gold-200">
-              <p className="text-brand-gold-600 font-sans font-bold mb-3">📝 No pages added yet</p>
-              <Button
-                type="button"
-                onClick={onAdd}
-                className="bg-gradient-to-r from-ilaw-navy to-ilaw-navy-600 hover:from-ilaw-navy-600 hover:to-ilaw-navy-700 text-white font-sans font-bold transition-transform hover:-translate-y-0.5"
-              >
-                <Plus className="h-4 w-4 mr-2" /> ✨ Add First Page
-              </Button>
-            </motion.div>
-          ) : (
-            <div className="space-y-4">
-              <AnimatePresence initial={false}>
-                {pages.map(page => (
-                  <motion.div
-                    key={page.id ?? (page as any)._tempId ?? `pn-${page.pageNumber}`}
-                    variants={itemFade}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                  >
-                    <PageForm
-                      initialValues={page}
-                      pageNumber={page.pageNumber}
-                      onSave={onPageSave}
-                      onRemove={() => onRemove(page.pageNumber)}
-                      showRemoveButton={pages.length > 1}
-                    />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onAdd}
-                className="w-full py-5 border-2 border-brand-gold-300 text-ilaw-navy hover:bg-brand-gold-100 font-sans font-bold transition-transform hover:-translate-y-0.5"
-              >
-                <Plus className="h-4 w-4 mr-2" /> ✨ Add Another Page
-              </Button>
-            </div>
-          )}
-        </motion.div>
-      );
-    });
-    return Comp;
-  }, []);
 
   const handleRemovePage = (pageNumber: number) => {
     const pageToRemove = pages.find(p => p.pageNumber === pageNumber);
@@ -586,7 +487,6 @@ export default function EditBook() {
           className="mb-6"
         >
           <Button
-            type="button"
             variant="ghost"
             className="border-2 border-brand-gold-300 text-ilaw-navy hover:bg-brand-gold-50 font-sans font-bold"
             onClick={() => navigate('/admin/books')}
@@ -649,7 +549,7 @@ export default function EditBook() {
                             <FormLabel className="font-sans font-bold text-ilaw-navy">📚 Book Type</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
-                                <SelectTrigger type="button" className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
+                                <SelectTrigger className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
                                   <SelectValue placeholder="Select type" />
                                 </SelectTrigger>
                               </FormControl>
@@ -682,7 +582,7 @@ export default function EditBook() {
                                 <FormLabel className="font-sans font-bold text-ilaw-navy">📋 Subject Category</FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value}>
                                   <FormControl>
-                                      <SelectTrigger type="button" className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
+                                    <SelectTrigger className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
                                       <SelectValue placeholder="Select subject category" />
                                     </SelectTrigger>
                                   </FormControl>
@@ -718,7 +618,7 @@ export default function EditBook() {
                             <FormLabel className="font-sans font-bold text-ilaw-navy">🎓 Grade Level</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
-                                <SelectTrigger type="button" className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
+                                <SelectTrigger className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
                                   <SelectValue placeholder="Select grade" />
                                 </SelectTrigger>
                               </FormControl>
@@ -747,7 +647,7 @@ export default function EditBook() {
                             <FormLabel className="font-sans font-bold text-ilaw-navy">🧠 Quiz Mode</FormLabel>
                             <Select value={field.value} onValueChange={field.onChange}>
                               <FormControl>
-                                <SelectTrigger type="button" className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
+                                <SelectTrigger className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
                                   <SelectValue placeholder="Select quiz mode" />
                                 </SelectTrigger>
                               </FormControl>
@@ -905,7 +805,7 @@ export default function EditBook() {
                                               }))
                                             }
                                           >
-                                            <SelectTrigger type="button" className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
+                                            <SelectTrigger className="border-2 border-brand-gold-200 focus:border-ilaw-gold">
                                               <SelectValue placeholder="Select method" />
                                             </SelectTrigger>
                                             <SelectContent className="border-2 border-brand-gold-200">
@@ -1038,12 +938,59 @@ export default function EditBook() {
                 </motion.div>
 
                 {/* == Pages Section == */}
-                <PagesSection
-                  pages={sortedPages}
-                  onPageSave={handlePageSave}
-                  onRemove={handleRemovePage}
-                  onAdd={handleAddPage}
-                />
+                <motion.div variants={itemFade} initial="hidden" animate="visible" className="border-2 border-brand-gold-200 bg-brand-gold-50 rounded-xl p-4">
+                  <h3 className="text-lg font-sans font-bold mb-3 text-ilaw-navy flex items-center">
+                    <BookOpen className="h-5 w-5 text-ilaw-gold mr-2" />
+                    📄 Book Pages
+                  </h3>
+
+                  {pages.length === 0 ? (
+                    <motion.div variants={itemFade} initial="hidden" animate="visible" className="bg-white p-6 rounded-xl text-center border-2 border-brand-gold-200">
+                      <p className="text-brand-gold-600 font-sans font-bold mb-3">📝 No pages added yet</p>
+                      <Button
+                        type="button"
+                        onClick={handleAddPage}
+                        className="bg-gradient-to-r from-ilaw-navy to-ilaw-navy-600 hover:from-ilaw-navy-600 hover:to-ilaw-navy-700 text-white font-sans font-bold transition-transform hover:-translate-y-0.5"
+                      >
+                        <Plus className="h-4 w-4 mr-2" /> ✨ Add First Page
+                      </Button>
+                    </motion.div>
+                  ) : (
+                    <div className="space-y-4">
+                      <AnimatePresence initial={false}>
+                        {pages
+                          .sort((a, b) => a.pageNumber - b.pageNumber)
+                          .map((page) => (
+                            <motion.div
+                              key={page.pageNumber}
+                              variants={itemFade}
+                              initial="hidden"
+                              animate="visible"
+                              exit="exit"
+                              layout
+                            >
+                              <PageForm
+                                initialValues={page}
+                                pageNumber={page.pageNumber}
+                                onSave={handlePageSave}
+                                onRemove={() => handleRemovePage(page.pageNumber)}
+                                showRemoveButton={pages.length > 1}
+                              />
+                            </motion.div>
+                          ))}
+                      </AnimatePresence>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleAddPage}
+                        className="w-full py-5 border-2 border-brand-gold-300 text-ilaw-navy hover:bg-brand-gold-100 font-sans font-bold transition-transform hover:-translate-y-0.5"
+                      >
+                        <Plus className="h-4 w-4 mr-2" /> ✨ Add Another Page
+                      </Button>
+                    </div>
+                  )}
+                </motion.div>
 
                 {/* spacer so sticky bar doesn't overlap */}
                 <div className="h-6" />
@@ -1061,9 +1008,7 @@ export default function EditBook() {
         >
           <div className="container max-w-5xl mx-auto">
             <div className="rounded-xl border-2 border-brand-gold-300 bg-white/90 backdrop-blur p-3 shadow-lg flex items-center justify-end gap-3">
-              {/* Sticky action buttons */}
               <Button
-                type="button"
                 variant="outline"
                 onClick={() => navigate('/admin/books')}
                 className="border-2 border-brand-gold-300 text-ilaw-navy hover:bg-brand-gold-50 font-sans font-bold"
@@ -1071,7 +1016,6 @@ export default function EditBook() {
                 Cancel
               </Button>
               <Button
-                type="submit"
                 onClick={form.handleSubmit(onSubmit)}
                 disabled={
                   updateBookMutation.isPending ||
