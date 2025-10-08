@@ -1034,6 +1034,8 @@ export default function EditBook() {
                               onSave={handlePageSave}
                               onRemove={() => handleRemovePage(page.pageNumber)}
                               showRemoveButton={pages.length > 1}
+                              enableAutosave
+                              autosaveDelayMs={25000}
                             />
                           </motion.div>
                         ))}

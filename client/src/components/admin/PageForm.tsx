@@ -77,6 +77,8 @@ interface PageFormProps {
   onSave: (values: PageFormValues) => void;
   onRemove: () => void;
   showRemoveButton?: boolean;
+  enableAutosave?: boolean;           // if true, perform a silent autosave after inactivity
+  autosaveDelayMs?: number;            // inactivity threshold in ms (default 15000)
 }
 
 // == Motion presets ==
@@ -125,7 +127,9 @@ function PageFormComponent({
   pageNumber,
   onSave,
   onRemove,
-  showRemoveButton = true
+  showRemoveButton = true,
+  enableAutosave = false,
+  autosaveDelayMs = 15000,
 }: PageFormProps) {
   const { toast } = useToast();
 
@@ -160,7 +164,7 @@ function PageFormComponent({
     },
   });
 
-  // Snapshot of initial values for change detection
+  // Snapshot of initial values for change detection (updated when manual save or autosave fires)
   const initialSnapshotRef = useRef(form.getValues());
 
   // Mark end of initial mount quickly (no delayed timer)
@@ -200,16 +204,7 @@ function PageFormComponent({
     }
   }, [transformed, fallbackRaw, previewSrc, previewTriedTransformed]);
 
-  // Track form field changes for unsaved state (title/content/image)
-  useEffect(() => {
-    const subscription = form.watch((current) => {
-      if (isInitialLoad) return;
-      const hasDiff =
-        JSON.stringify(current) !== JSON.stringify(initialSnapshotRef.current);
-      if (hasDiff) setHasUnsavedChanges(true);
-    });
-    return () => subscription.unsubscribe();
-  }, [form, isInitialLoad]);
+  // Removed heavy JSON stringify watcher. We explicitly flag unsaved in onChange handlers.
 
   // == Manual Save Builder ==
   const buildPayload = useCallback(
@@ -245,6 +240,26 @@ function PageFormComponent({
     initialSnapshotRef.current = form.getValues();
     setHasUnsavedChanges(false);
   }, [buildPayload, onSave, toast, form]);
+
+  // ===== Debounced Autosave (silent) =====
+  const autosaveTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!enableAutosave) return;
+    if (!hasUnsavedChanges) return;
+    if (imageUploading) return; // wait until upload completes
+    if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = window.setTimeout(() => {
+      const payload = buildPayload(false);
+      if (payload) {
+        onSave(payload);
+        initialSnapshotRef.current = form.getValues();
+        setHasUnsavedChanges(false); // mark saved
+      }
+    }, Math.max(autosaveDelayMs, 3000)); // enforce a minimum delay safeguard
+    return () => {
+      if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current!);
+    };
+  }, [hasUnsavedChanges, enableAutosave, autosaveDelayMs, imageUploading, buildPayload, onSave, form]);
 
   // == Image Handling ==
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -779,10 +794,17 @@ function PageFormComponent({
 
             <motion.div variants={sectionFade} className="pt-5 border-t-2 border-brand-gold-200">
               <div className="bg-gradient-to-r from-brand-gold-50 to-brand-navy-50/40 border-2 border-brand-gold-200 rounded-xl p-3 text-center">
-                <p className="text-sm text-ilaw-navy font-medium flex items-center justify-center">
-                  <Sparkles className="h-4 w-4 mr-2 text-ilaw-gold" />
-                  ✨ Edit your content then click the "Save Page" button at the top. No background autosave is running.
-                </p>
+                {enableAutosave ? (
+                  <p className="text-sm text-ilaw-navy font-medium flex items-center justify-center">
+                    <Sparkles className="h-4 w-4 mr-2 text-ilaw-gold" />
+                    ✨ Changes auto-save silently after {(autosaveDelayMs / 1000).toFixed(0)}s of inactivity, or click "Save Page".
+                  </p>
+                ) : (
+                  <p className="text-sm text-ilaw-navy font-medium flex items-center justify-center">
+                    <Sparkles className="h-4 w-4 mr-2 text-ilaw-gold" />
+                    ✨ Edit your content then click the "Save Page" button at the top. No background autosave is running.
+                  </p>
+                )}
               </div>
             </motion.div>
           </motion.div>
@@ -798,6 +820,8 @@ function PageFormComponent({
 export const PageForm = React.memo(PageFormComponent, (prev, next) => {
   if (prev.pageNumber !== next.pageNumber) return false;
   if (prev.showRemoveButton !== next.showRemoveButton) return false;
+  if (prev.enableAutosave !== next.enableAutosave) return false;
+  if (prev.autosaveDelayMs !== next.autosaveDelayMs) return false;
   const prevInit = prev.initialValues;
   const nextInit = next.initialValues;
   if (!prevInit && !nextInit) return true;
