@@ -70,12 +70,16 @@ export interface ButtonProps
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, loading = false, children, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
+    // Ensure native <button> does not implicitly submit forms unless caller opts in
+    const { type, ...restProps } = props as React.ButtonHTMLAttributes<HTMLButtonElement> & Record<string, any>;
+    const nativeType = (type as any) ?? 'button';
     return (
       <Comp
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         disabled={loading || props.disabled}
-        {...props}
+        {...(Comp === 'button' ? { type: nativeType } : {})}
+        {...restProps}
       >
         {loading && (
           <svg
