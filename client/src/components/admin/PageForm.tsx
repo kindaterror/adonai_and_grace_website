@@ -68,6 +68,12 @@ export interface PageFormValues extends z.infer<typeof pageSchema> {
   id?: number;
   questions?: Question[];
   showNotification?: boolean;
+  /**
+   * Stable temporary id used client-side before a real id is issued by the backend.
+   * TeacherEditBook supplies this so we can keep component instances mounted
+   * even if pageNumber or order changes. Not persisted to server.
+   */
+  _tempId?: string;
 }
 
 interface PageFormProps {
@@ -217,6 +223,7 @@ export function PageForm({
       if (!v.content || !v.content.trim()) return null;
       return {
         id: initialValues?.id,
+        _tempId: initialValues?._tempId,
         pageNumber,
         title: v.title ?? '',
         content: v.content ?? '',
@@ -455,7 +462,7 @@ export function PageForm({
                               field.onChange(e.target.value);
                               if (!isInitialLoad) setHasUnsavedChanges(true);
                             }}
-                            className="border-2 border-brand-gold-200 focus:border-ilaw-gold flex-1 h-full min-h=[260px] md:min-h-0 resize-vertical md:resize-none"
+                            className="border-2 border-brand-gold-200 focus:border-ilaw-gold flex-1 h-full min-h-[260px] md:min-h-0 resize-vertical md:resize-none"
                           />
                         </FormControl>
                         <FormMessage />

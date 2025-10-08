@@ -1,5 +1,5 @@
 // == IMPORTS & DEPENDENCIES ==
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -117,6 +117,7 @@ export default function EditBook() {
 
   // == STATE ==
   const [pages, setPages] = useState<PageFormValues[]>([]);
+  const [lastBulkSaveAt, setLastBulkSaveAt] = useState<number>(0);
   const [shuffleAll, setShuffleAll] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
   const [audioUploading, setAudioUploading] = useState(false);
@@ -219,6 +220,7 @@ export default function EditBook() {
     if (Array.isArray(pagesData)) {
       const formatted = pagesData.map((p: any) => ({
         id: p.id,
+        _tempId: `page-${p.id ?? p.pageNumber}`,
         pageNumber: p.pageNumber,
         title: p.title,
         content: p.content,
@@ -334,6 +336,52 @@ export default function EditBook() {
     },
   });
 
+  // Bulk pages mutation (dirty pages only)
+  const bulkPagesMutation = useMutation({
+    mutationFn: async (dirtyPages: any[]) => apiRequest('PUT', `/api/books/${bookId}/pages/bulk`, { pages: dirtyPages }),
+    onSuccess: (res: any) => {
+      if (res?.pages) {
+        setPages(res.pages.map((p: any) => ({ ...p, dirty: false })));
+        setLastBulkSaveAt(Date.now());
+        toast({ title: '✅ Pages Synced', description: 'All changed pages saved.' });
+      }
+    },
+    onError: (e: any) => toast({ variant: 'destructive', title: '❌ Page Sync Failed', description: e?.message || 'Try again.' })
+  });
+
+  const saveAllDirtyPages = useCallback(() => {
+    const dirty = pages.filter((p: any) => p.dirty);
+    if (dirty.length === 0) {
+      toast({ title: 'No page changes', description: 'There are no unsaved page edits.' });
+      return;
+    }
+    bulkPagesMutation.mutate(dirty);
+  }, [pages, bulkPagesMutation, toast]);
+
+  // Idle autosave loop (every 7s for pages idle >10s, spacing bulk saves 8s apart)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      if (now - lastBulkSaveAt < 8000) return;
+      const candidates = pages.filter((p: any) => p.dirty && (!p.lastTouched || now - p.lastTouched > 10000));
+      if (!candidates.length) return;
+      bulkPagesMutation.mutate(candidates);
+    }, 7000);
+    return () => clearInterval(interval);
+  }, [pages, bulkPagesMutation, lastBulkSaveAt]);
+
+  // Warn user before leaving if dirty pages
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (pages.some((p: any) => p.dirty)) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved page changes.';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [pages]);
+
   // Save badge mappings (skip silently if endpoint missing)
   const saveBadgesMutation = useMutation({
     mutationFn: async () => {
@@ -369,7 +417,12 @@ export default function EditBook() {
       }
 
       await updateBookMutation.mutateAsync(data);
-      for (const page of pages) await updatePagesMutation.mutateAsync(page);
+      const dirty = pages.filter((p: any) => p.dirty);
+      if (dirty.length) {
+        try { await bulkPagesMutation.mutateAsync(dirty); } catch {/* handled in mutation */}
+      } else {
+        for (const page of pages) await updatePagesMutation.mutateAsync(page);
+      }
       await saveBadgesMutation.mutateAsync();
 
       navigate('/admin/books');
@@ -391,15 +444,17 @@ export default function EditBook() {
       newPageNumber++;
     }
     
-    const newPage: PageFormValues = { pageNumber: newPageNumber, title: '', content: '', imageUrl: '', imagePublicId: '', questions: [] };
+    const newPage: PageFormValues = { _tempId: `temp-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`, pageNumber: newPageNumber, title: '', content: '', imageUrl: '', imagePublicId: '', questions: [] };
     setPages([...pages, newPage]);
   };
 
   const handlePageSave = (pageData: PageFormValues) => {
-    setPages(prev => prev.map(p => (p.pageNumber === pageData.pageNumber ? pageData : p)));
+    const scrollY = window.scrollY;
+    setPages(prev => prev.map(p => (p.pageNumber === pageData.pageNumber ? { ...p, ...pageData, dirty: true, lastTouched: Date.now() } as any : p)));
     if (pageData.showNotification) {
       toast({ title: '✅ Page Saved', description: 'Page changes saved locally. Click "Save Changes" to update the book.' });
     }
+    requestAnimationFrame(() => window.scrollTo({ top: scrollY }));
   };
 
   const handleRemovePage = (pageNumber: number) => {
@@ -958,11 +1013,11 @@ export default function EditBook() {
                   ) : (
                     <div className="space-y-4">
                       <AnimatePresence initial={false}>
-                        {pages
+                        {[...pages]
                           .sort((a, b) => a.pageNumber - b.pageNumber)
                           .map((page) => (
                             <motion.div
-                              key={page.pageNumber}
+                              key={page.id ?? (page as any)._tempId ?? `pn-${page.pageNumber}`}
                               variants={itemFade}
                               initial="hidden"
                               animate="visible"
@@ -1008,6 +1063,15 @@ export default function EditBook() {
         >
           <div className="container max-w-5xl mx-auto">
             <div className="rounded-xl border-2 border-brand-gold-300 bg-white/90 backdrop-blur p-3 shadow-lg flex items-center justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={saveAllDirtyPages}
+                className="border-2 border-brand-gold-300 text-ilaw-navy hover:bg-brand-gold-50 font-sans font-bold"
+                disabled={bulkPagesMutation.isPending}
+              >
+                {bulkPagesMutation.isPending ? 'Syncing Pages…' : 'Save All Pages'}
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => navigate('/admin/books')}
