@@ -398,6 +398,130 @@ function PageFormComponent({
     setLastQuestionsChange(Date.now());
   };
 
+  // Helper to update by stable id (safer when indexes change)
+  const updateQuestionById = (id: string, field: keyof Question, value: string) => {
+    const idx = questions.findIndex(q => q.id === id);
+    if (idx !== -1) updateQuestion(idx, field, value);
+  };
+
+  // Local debounced row to avoid remounts / focus-loss when typing
+  const QuestionRow = React.memo(function QuestionRow({ q, index } : { q: Question; index: number }) {
+    const [localText, setLocalText] = useState(q.questionText);
+    // keep localText in sync when parent updates from external sources
+    useEffect(() => {
+      setLocalText(q.questionText);
+    }, [q.questionText]);
+
+    // debounce pushing text changes to parent
+    useEffect(() => {
+      const t = window.setTimeout(() => {
+        if (localText !== q.questionText) updateQuestionById(q.id, 'questionText', localText);
+      }, 220);
+      return () => clearTimeout(t);
+    }, [localText, q.questionText, q.id]);
+
+    return (
+      <motion.div
+        key={q.id}
+        variants={itemFade}
+        initial="hidden"
+        animate="visible"
+        exit="exit"
+        className="p-4 border-2 border-brand-gold-200 rounded-xl mb-3 bg-brand-gold-50"
+      >
+        <div className="flex justify-between items-start mb-3">
+          <h4 className="text-base font-heading font-bold text-ilaw-navy">❓ Question {index + 1}</h4>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => removeQuestion(index)}
+            className="h-8 text-red-500 hover:text-red-700 hover:bg-red-50 font-bold"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <Label className="text-ilaw-navy font-heading font-bold">Question Text</Label>
+            <Textarea
+              value={localText}
+              onChange={(e) => setLocalText(e.target.value)}
+              placeholder="Enter your question here..."
+              className="mt-1 border-2 border-brand-gold-200 focus:border-ilaw-gold"
+              rows={3}
+            />
+          </div>
+
+          <div>
+            <Label className="text-ilaw-navy font-heading font-bold">Answer Type</Label>
+            <select
+              value={q.answerType}
+              onChange={(e) => updateQuestionById(q.id, 'answerType', e.target.value)}
+              className="w-full mt-1 p-2 border-2 border-brand-gold-200 rounded-lg focus:border-ilaw-gold font-medium"
+            >
+              <option value="text">✍️ Text</option>
+              <option value="multiple_choice">🔘 Multiple Choice</option>
+            </select>
+          </div>
+
+          <AnimatePresence initial={false} mode="popLayout">
+            {q.answerType === 'text' && (
+              <motion.div key={`text-${q.id}`} variants={itemFade} initial="hidden" animate="visible" exit="exit">
+                <Label className="text-ilaw-navy font-heading font-bold">Correct Answer</Label>
+                <Input
+                  value={q.correctAnswer || ''}
+                  onChange={(e) => updateQuestionById(q.id, 'correctAnswer', e.target.value)}
+                  placeholder="Enter the correct answer"
+                  className="mt-1 border-2 border-brand-gold-200 focus:border-ilaw-gold"
+                />
+              </motion.div>
+            )}
+
+            {q.answerType === 'multiple_choice' && (
+              <motion.div key={`mc-${q.id}`} variants={itemFade} initial="hidden" animate="visible" exit="exit">
+                <Label className="text-ilaw-navy font-heading font-bold">Options</Label>
+                <div className="border-2 border-brand-gold-200 rounded-xl mt-1 bg-white">
+                  {getOptionsList(q.options).map((option, optionIdx) => (
+                    <div key={`${q.id}-${optionIdx}`} className="flex items-center p-3 border-b border-brand-gold-200 last:border-b-0">
+                      <input
+                        type="radio"
+                        id={`question-${q.id}-option-${optionIdx}`}
+                        name={`question-${q.id}-correct`}
+                        className="mr-3 h-4 w-4 text-ilaw-gold"
+                        checked={q.correctAnswer === option}
+                        onChange={() => updateQuestionById(q.id, 'correctAnswer', option)}
+                      />
+                      <input
+                        type="text"
+                        value={option}
+                        onChange={(e) => updateOptionText(index, optionIdx, e.target.value)}
+                        className="flex-1 border-0 focus:ring-0 p-1 font-medium text-ilaw-navy"
+                        placeholder={`Option ${optionIdx + 1}`}
+                      />
+                      <Button type="button" variant="ghost" size="sm" className="h-8 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => removeOption(index, optionIdx)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+
+                  <div className="p-3">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => addOption(index)} className="w-full justify-center border-2 border-dashed border-brand-gold-300 text-brand-gold-600 hover:bg-brand-gold-100 font-bold">
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Option
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-brand-gold-600 mt-1 font-medium">Select the radio button next to the correct answer</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.div>
+    );
+  });
+
   // == Option Management ==
   const addOption = (qi: number) => {
     const q = questions[qi];
@@ -671,136 +795,7 @@ function PageFormComponent({
 
               <AnimatePresence initial={false}>
                 {questions.map((question, index) => (
-                  <motion.div
-                    key={question.id}          // ✅ stable key prevents remount on each keystroke
-                    variants={itemFade}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                    layout
-                    className="p-4 border-2 border-brand-gold-200 rounded-xl mb-3 bg-brand-gold-50"
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                      <h4 className="text-base font-heading font-bold text-ilaw-navy">❓ Question {index + 1}</h4>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeQuestion(index)}
-                        className="h-8 text-red-500 hover:text-red-700 hover:bg-red-50 font-bold"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div>
-                        <Label className="text-ilaw-navy font-heading font-bold">Question Text</Label>
-                        <Textarea
-                          value={question.questionText}
-                          onChange={(e) => updateQuestion(index, 'questionText', e.target.value)}
-                          placeholder="Enter your question here..."
-                          className="mt-1 border-2 border-brand-gold-200 focus:border-ilaw-gold"
-                          rows={3}
-                        />
-                      </div>
-
-                      <div>
-                        <Label className="text-ilaw-navy font-heading font-bold">Answer Type</Label>
-                        <select
-                          value={question.answerType}
-                          onChange={(e) => updateQuestion(index, 'answerType', e.target.value)}
-                          className="w-full mt-1 p-2 border-2 border-brand-gold-200 rounded-lg focus:border-ilaw-gold font-medium"
-                        >
-                          <option value="text">✍️ Text</option>
-                          <option value="multiple_choice">🔘 Multiple Choice</option>
-                        </select>
-                      </div>
-
-                      <AnimatePresence initial={false} mode="popLayout">
-                        {question.answerType === 'text' && (
-                          <motion.div
-                            key={`text-${question.id}`}
-                            variants={itemFade}
-                            initial="hidden"
-                            animate="visible"
-                            exit="exit"
-                            layout
-                          >
-                            <Label className="text-ilaw-navy font-heading font-bold">Correct Answer</Label>
-                            <Input
-                              value={question.correctAnswer || ''}
-                              onChange={(e) => updateQuestion(index, 'correctAnswer', e.target.value)}
-                              placeholder="Enter the correct answer"
-                              className="mt-1 border-2 border-brand-gold-200 focus:border-ilaw-gold"
-                            />
-                          </motion.div>
-                        )}
-
-                        {question.answerType === 'multiple_choice' && (
-                          <motion.div
-                            key={`mc-${question.id}`}
-                            variants={itemFade}
-                            initial="hidden"
-                            animate="visible"
-                            exit="exit"
-                            layout
-                          >
-                            <Label className="text-ilaw-navy font-heading font-bold">Options</Label>
-                            <div className="border-2 border-brand-gold-200 rounded-xl mt-1 bg-white">
-                              {getOptionsList(question.options).map((option, optionIdx) => (
-                                <div
-                                  key={`${question.id}-${optionIdx}`}  // ✅ stable option row key
-                                  className="flex items-center p-3 border-b border-brand-gold-200 last:border-b-0"
-                                >
-                                  <input
-                                    type="radio"
-                                    id={`question-${question.id}-option-${optionIdx}`}
-                                    name={`question-${question.id}-correct`} // use question.id in group name
-                                    className="mr-3 h-4 w-4 text-ilaw-gold"
-                                    checked={question.correctAnswer === option}
-                                    onChange={() => updateQuestion(index, 'correctAnswer', option)}
-                                  />
-                                  <input
-                                    type="text"
-                                    value={option}
-                                    onChange={(e) => updateOptionText(index, optionIdx, e.target.value)}
-                                    className="flex-1 border-0 focus:ring-0 p-1 font-medium text-ilaw-navy"
-                                    placeholder={`Option ${optionIdx + 1}`}
-                                  />
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                    onClick={() => removeOption(index, optionIdx)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              ))}
-
-                              <div className="p-3">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => addOption(index)}
-                                  className="w-full justify-center border-2 border-dashed border-brand-gold-300 text-brand-gold-600 hover:bg-brand-gold-100 font-bold"
-                                >
-                                  <Plus className="h-4 w-4 mr-1" />
-                                  Add Option
-                                </Button>
-                              </div>
-                            </div>
-                            <p className="text-xs text-brand-gold-600 mt-1 font-medium">
-                              Select the radio button next to the correct answer
-                            </p>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </motion.div>
+                  <QuestionRow key={question.id} q={question} index={index} />
                 ))}
               </AnimatePresence>
 

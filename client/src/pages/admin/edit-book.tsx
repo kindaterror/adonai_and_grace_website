@@ -337,34 +337,10 @@ export default function EditBook() {
     },
   });
 
-  // Manual bulk pages mutation (explicit user action only)
-  const bulkPagesMutation = useMutation({
-    mutationFn: async (dirtyPages: any[]) => apiRequest('PUT', `/api/books/${bookId}/pages/bulk`, { pages: dirtyPages }),
-    onSuccess: (res: any) => {
-      if (res?.pages) {
-        // replace local pages with canonical pages from server and clear dirty flags
-        setPages(res.pages.map((p: any) => ({ ...p, dirty: false })));
-        toast({ title: '✅ Pages Synced', description: 'All changed pages saved.' });
-      }
-    },
-    onError: (e: any) => toast({ variant: 'destructive', title: '❌ Page Sync Failed', description: e?.message || 'Try again.' })
-  });
-
-  const saveAllDirtyPages = async () => {
-    const dirty = pages.filter((p: any) => p.dirty);
-    if (dirty.length === 0) {
-      toast({ title: 'No page changes', description: 'There are no unsaved page edits.' });
-      return;
-    }
-    try {
-      await bulkPagesMutation.mutateAsync(dirty);
-    } catch (e) {
-      // error handled by mutation onError
-    }
-  };
-
-  // Autosave/bulk logic removed per request: pages will only be saved
-  // when the user clicks the Save Changes button (or individual PageForm Save).
+  // Autosave/bulk logic intentionally removed here: pages are saved
+  // by individual PageForm components (their local autosave) and when the
+  // user clicks the global "Save Changes" button. Removing the bulk sync
+  // avoids duplicate saves.
 
   // Save badge mappings (skip silently if endpoint missing)
   const saveBadgesMutation = useMutation({
@@ -1087,7 +1063,7 @@ export default function EditBook() {
         >
           <div className="container max-w-5xl mx-auto">
             <div className="rounded-xl border-2 border-brand-gold-300 bg-white/90 backdrop-blur p-3 shadow-lg flex items-center justify-end gap-3">
-              {/* Save All Pages (bulk autosave removed) */}
+              {/* Sticky action buttons */}
               <Button
                 type="button"
                 variant="outline"

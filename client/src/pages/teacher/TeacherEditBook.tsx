@@ -416,56 +416,9 @@ export default function TeacherEditBook() {
     coverUploading ||
     audioUploading;
 
-  // Bulk pages mutation (dirty pages only)
-  const bulkPagesMutation = useMutation({
-    mutationFn: async (dirtyPages: any[]) => {
-      return apiRequest("PUT", `/api/books/${bookId}/pages/bulk`, { pages: dirtyPages });
-    },
-    onSuccess: (res: any) => {
-      if (res?.pages) {
-        // Replace local pages with canonical response, mark clean
-        setPages(res.pages.map((p: any) => ({ ...p, dirty: false })));
-        setLastBulkSaveAt(Date.now());
-        toast({ title: "✅ Pages Synced", description: "All changed pages saved." });
-      }
-    },
-    onError: (e: any) => {
-      toast({ variant: "destructive", title: "❌ Page Sync Failed", description: e?.message || "Try again." });
-    }
-  });
-
-  const saveAllDirtyPages = useCallback(() => {
-    const dirty = pages.filter((p: any) => p.dirty);
-    if (dirty.length === 0) {
-      toast({ title: "No page changes", description: "There are no unsaved page edits." });
-      return;
-    }
-    bulkPagesMutation.mutate(dirty);
-  }, [pages, bulkPagesMutation, toast]);
-
-  // Idle autosave loop: every 7s check for pages idle >10s & not saved within last 20s
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now();
-      if (now - lastBulkSaveAt < 8000) return; // avoid spamming right after a save
-      const candidates = pages.filter((p: any) => p.dirty && (!p.lastTouched || now - p.lastTouched > 10000));
-      if (candidates.length === 0) return;
-      bulkPagesMutation.mutate(candidates);
-    }, 7000);
-    return () => clearInterval(interval);
-  }, [pages, bulkPagesMutation, lastBulkSaveAt]);
-
-  // Warn on unload if dirty pages
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (pages.some((p: any) => p.dirty)) {
-        e.preventDefault();
-        e.returnValue = "You have unsaved page changes.";
-      }
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [pages]);
+  // Note: Bulk autosave/idle sync removed here. Individual PageForm
+  // components handle local autosave (if enabled) and the user should
+  // use the global "Save Changes" button to persist the whole book.
 
   /* ========== Loading / Not found ========== */
   if (isLoadingBook || isLoadingPages) {
@@ -1079,15 +1032,7 @@ export default function TeacherEditBook() {
         <motion.div variants={fadeInFast} initial="hidden" animate="visible" className="sticky bottom-4">
           <div className="container max-w-5xl mx-auto">
             <div className="rounded-xl border-2 border-brand-navy-200 bg-white/90 backdrop-blur p-3 shadow-lg flex items-center justify-end gap-3">
-                      <Button
-                        type="button"
-                        onClick={saveAllDirtyPages}
-                        variant="outline"
-                        className="border-2 border-brand-navy-200 text-ilaw-navy hover:bg-brand-navy-50 font-sans font-bold"
-                        disabled={bulkPagesMutation.isPending}
-                      >
-                        {bulkPagesMutation.isPending ? "Syncing Pages..." : "Save All Pages"}
-                      </Button>
+              {/* Removed bulk "Save All Pages" button - use global Save Changes only */}
               <Button
                 variant="outline"
                 onClick={() => navigate("/teacher/books")}
