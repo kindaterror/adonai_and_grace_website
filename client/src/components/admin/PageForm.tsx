@@ -68,11 +68,6 @@ export interface PageFormValues extends z.infer<typeof pageSchema> {
   id?: number;
   questions?: Question[];
   showNotification?: boolean;
-  /**
-   * Stable temporary id used client-side before a real id is issued by the backend.
-   * TeacherEditBook supplies this so we can keep component instances mounted
-   * even if pageNumber or order changes. Not persisted to server.
-   */
   _tempId?: string;
 }
 
@@ -223,7 +218,7 @@ export function PageForm({
       if (!v.content || !v.content.trim()) return null;
       return {
         id: initialValues?.id,
-        _tempId: initialValues?._tempId,
+        _tempId: stableTempIdRef.current,
         pageNumber,
         title: v.title ?? '',
         content: v.content ?? '',
@@ -275,6 +270,22 @@ export function PageForm({
       setPreviewTriedTransformed(false);
       setHasUnsavedChanges(true);
       setLastImageChange(Date.now());
+
+      // Notify parent with updated payload (include stable temp id)
+      const vals = form.getValues();
+      const payload: PageFormValues = {
+        id: initialValues?.id,
+        _tempId: stableTempIdRef.current,
+        pageNumber,
+        title: vals.title ?? '',
+        content: vals.content ?? '',
+        imageUrl: url,
+        imagePublicId: publicId ?? '',
+        questions: questions.length > 0 ? questions : undefined,
+        showNotification: true,
+      };
+      onSave(payload);
+
       toast({ title: 'Image uploaded', description: 'Page image uploaded successfully.' });
     } catch (err: any) {
       toast({
@@ -295,6 +306,21 @@ export function PageForm({
     setHasUnsavedChanges(true);
     setLastImageChange(Date.now());
     if (fileInputRef.current) fileInputRef.current.value = "";
+
+    // notify parent of cleared image
+    const vals = form.getValues();
+    const payload: PageFormValues = {
+      id: initialValues?.id,
+      _tempId: stableTempIdRef.current,
+      pageNumber,
+      title: vals.title ?? '',
+      content: vals.content ?? '',
+      imageUrl: "",
+      imagePublicId: "",
+      questions: questions.length > 0 ? questions : undefined,
+      showNotification: true,
+    };
+    onSave(payload);
   };
 
   // == Question Utilities ==
