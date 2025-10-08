@@ -1,4 +1,14 @@
-// == IMPORTS & DEPENDENCIES ==
+/**
+ * PageForm (updated)
+ * Key fixes:
+ * 1. Removed delayed isInitialLoad timeout (could feel like a "restart") and simplified initial load logic.
+ * 2. Added stable temp id ref (can be used by parent as a reliable key to avoid remounts when pageNumber changes).
+ * 3. Properly tracks unsaved changes for title/content edits (previously only images/questions triggered it).
+ * 4. Narrowed effects so they don't re-run unnecessarily (avoids perceived full re-init).
+ * 5. Added optional onDirty flag logic (internal) – keeps behavior lightweight.
+ * 6. Defensive checks around Cloudinary preview selection.
+ */
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
@@ -20,7 +30,7 @@ import {
 } from '@/components/ui/form';
 import { motion, AnimatePresence } from '@/lib/motionShim';
 
-/** ================= Cloudinary helpers (Vite + Next-safe) ================= */
+/** ================= Cloudinary helpers ================= */
 const cloud =
   ((typeof import.meta !== 'undefined' ? (import.meta as any)?.env : undefined)
     ?.VITE_CLOUDINARY_CLOUD_NAME as string | undefined) ||
@@ -68,7 +78,7 @@ interface PageFormProps {
   showRemoveButton?: boolean;
 }
 
-// == Motion presets (UI-only) ==
+// == Motion presets ==
 const fadeCard = {
   hidden: { opacity: 0, y: 8 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } },
@@ -106,11 +116,9 @@ async function uploadPageImage(file: File) {
   if (!resp.ok || !data?.success) {
     throw new Error(data?.error || 'Image upload failed');
   }
-  // { success, url, publicId, ... }
   return data as { success: true; url: string; publicId: string };
 }
 
-// == PAGE FORM COMPONENT ==
 export function PageForm({
   initialValues,
   pageNumber,
@@ -118,10 +126,15 @@ export function PageForm({
   onRemove,
   showRemoveButton = true
 }: PageFormProps) {
-
-  // == State & Refs ==
   const { toast } = useToast();
-  const [hasQuestions, setHasQuestions] = useState(false);
+
+  // Stable internal id (can be used by parent as key: p.id ?? stableTempIdRef.current)
+  const stableTempIdRef = useRef(
+    initialValues?.id
+      ? `page-${initialValues.id}`
+      : `temp-${(typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2))}`
+  );
+
   const [questions, setQuestions] = useState<Question[]>(initialValues?.questions || []);
   const [imagePreview, setImagePreview] = useState<string | null>(initialValues?.imageUrl || null);
   const [imageUploading, setImageUploading] = useState(false);
@@ -134,16 +147,7 @@ export function PageForm({
   const [lastQuestionsChange, setLastQuestionsChange] = useState(0);
   const [lastImageChange, setLastImageChange] = useState(0);
 
-  // == Effects ==
-  useEffect(() => {
-    if (initialValues?.questions && initialValues.questions.length > 0) {
-      setQuestions(initialValues.questions);
-      setHasQuestions(true);
-    }
-    setTimeout(() => setIsInitialLoad(false), 1000);
-  }, [initialValues?.questions]);
-
-  // == Form Initialization ==
+  // Initialize form
   const form = useForm<PageFormValues>({
     resolver: zodResolver(pageSchema),
     defaultValues: {
@@ -155,13 +159,31 @@ export function PageForm({
     },
   });
 
-  // Prefer Cloudinary preview if a publicId is present; fall back to local upload preview; finally raw URL field
+  // Snapshot of initial values for change detection
+  const initialSnapshotRef = useRef(form.getValues());
+
+  // Mark end of initial mount quickly (no delayed timer)
+  useEffect(() => {
+    setIsInitialLoad(false);
+  }, []);
+
+  // Sync questions only on first mount or when initialValues.id changes (avoid resets)
+  const prevInitIdRef = useRef<number | undefined>(initialValues?.id);
+  useEffect(() => {
+    if (initialValues?.id !== prevInitIdRef.current) {
+      setQuestions(initialValues?.questions || []);
+      prevInitIdRef.current = initialValues?.id;
+    }
+  }, [initialValues?.id, initialValues?.questions]);
+
+  // Cloudinary preview logic
   const cloudPublicId = form.watch('imagePublicId');
   const watchedImageUrl = form.watch('imageUrl');
   const transformed = cloudPublicId ? clUrl(cloudPublicId) : '';
-  const fallbackRaw = imagePreview || (watchedImageUrl && /^https?:\/\//i.test(watchedImageUrl) ? watchedImageUrl : '');
+  const fallbackRaw =
+    imagePreview ||
+    (watchedImageUrl && /^https?:\/\//i.test(watchedImageUrl) ? watchedImageUrl : '');
 
-  // Decide which to show: try transformed once; if it errors, stick to fallbackRaw
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (transformed && !previewTriedTransformed) {
@@ -175,23 +197,37 @@ export function PageForm({
     } else if (!previewSrc) {
       setPreviewSrc(fallbackRaw || null);
     }
-  }, [transformed, fallbackRaw]);
+  }, [transformed, fallbackRaw, previewSrc, previewTriedTransformed]);
+
+  // Track form field changes for unsaved state (title/content/image)
+  useEffect(() => {
+    const subscription = form.watch((current) => {
+      if (isInitialLoad) return;
+      const hasDiff =
+        JSON.stringify(current) !== JSON.stringify(initialSnapshotRef.current);
+      if (hasDiff) setHasUnsavedChanges(true);
+    });
+    return () => subscription.unsubscribe();
+  }, [form, isInitialLoad]);
 
   // == Manual Save Builder ==
-  const buildPayload = useCallback((showNotification: boolean): PageFormValues | null => {
-    const v = form.getValues();
-    if (!v.content || !v.content.trim()) return null;
-    return {
-      id: initialValues?.id,
-      pageNumber,
-      title: v.title ?? '',
-      content: v.content ?? '',
-      imageUrl: v.imageUrl ?? '',
-      imagePublicId: v.imagePublicId ?? '',
-      questions: questions.length > 0 ? questions : undefined,
-      showNotification
-    };
-  }, [form, initialValues?.id, pageNumber, questions]);
+  const buildPayload = useCallback(
+    (showNotification: boolean): PageFormValues | null => {
+      const v = form.getValues();
+      if (!v.content || !v.content.trim()) return null;
+      return {
+        id: initialValues?.id,
+        pageNumber,
+        title: v.title ?? '',
+        content: v.content ?? '',
+        imageUrl: v.imageUrl ?? '',
+        imagePublicId: v.imagePublicId ?? '',
+        questions: questions.length > 0 ? questions : undefined,
+        showNotification
+      };
+    },
+    [form, initialValues?.id, pageNumber, questions]
+  );
 
   const handleManualSave = useCallback(() => {
     const payload = buildPayload(true);
@@ -204,10 +240,11 @@ export function PageForm({
       return;
     }
     onSave(payload);
+    initialSnapshotRef.current = form.getValues();
     setHasUnsavedChanges(false);
-  }, [buildPayload, onSave, toast]);
+  }, [buildPayload, onSave, toast, form]);
 
-  // == Image Handling (via /api/upload) ==
+  // == Image Handling ==
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -223,17 +260,14 @@ export function PageForm({
 
     try {
       setImageUploading(true);
-  const { url, publicId } = await uploadPageImage(file);
-
-      // set both URL and publicId
+      const { url, publicId } = await uploadPageImage(file);
       form.setValue('imageUrl', url, { shouldDirty: true });
       form.setValue('imagePublicId', publicId ?? '', { shouldDirty: true });
       setImagePreview(url);
-  setPreviewSrc(url); // show raw uploaded image immediately
-  setPreviewTriedTransformed(false); // allow transformed retry for new upload
+      setPreviewSrc(url);
+      setPreviewTriedTransformed(false);
       setHasUnsavedChanges(true);
-    setLastImageChange(Date.now());
-
+      setLastImageChange(Date.now());
       toast({ title: 'Image uploaded', description: 'Page image uploaded successfully.' });
     } catch (err: any) {
       toast({
@@ -247,16 +281,13 @@ export function PageForm({
   };
 
   const clearImage = () => {
-  setImagePreview(null);
-  setPreviewSrc(null);
+    setImagePreview(null);
+    setPreviewSrc(null);
     form.setValue("imageUrl", "");
     form.setValue("imagePublicId", "");
     setHasUnsavedChanges(true);
     setLastImageChange(Date.now());
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   // == Question Utilities ==
@@ -269,37 +300,36 @@ export function PageForm({
 
   // == Question Management ==
   const addQuestion = () => {
-    setQuestions([
-      ...questions,
+    setQuestions(prev => [
+      ...prev,
       { questionText: '', answerType: 'text', correctAnswer: '', options: '' }
     ]);
-    setHasQuestions(true);
-  setHasUnsavedChanges(true);
-  setLastQuestionsChange(Date.now());
+    setHasUnsavedChanges(true);
+    setLastQuestionsChange(Date.now());
   };
 
   const removeQuestion = (index: number) => {
-    const updated = [...questions];
-    updated.splice(index, 1);
-  setQuestions(updated);
-  setHasUnsavedChanges(true);
-  setLastQuestionsChange(Date.now());
-    if (updated.length === 0) setHasQuestions(false);
+    setQuestions(prev => {
+      const updated = [...prev];
+      updated.splice(index, 1);
+      return updated;
+    });
+    setHasUnsavedChanges(true);
+    setLastQuestionsChange(Date.now());
   };
 
   const updateQuestion = (index: number, field: keyof Question, value: string) => {
-    const updated = [...questions];
-    updated[index] = { ...updated[index], [field]: value };
-
-    if (field === 'answerType' && value === 'multiple_choice') {
-      const current = updated[index];
-      const opts = getOptionsList(current.options);
-      if (opts.length === 0) current.options = "Option 1\nOption 2\nOption 3";
-    }
-
-  setQuestions(updated);
-  setHasUnsavedChanges(true);
-  setLastQuestionsChange(Date.now());
+    setQuestions(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      if (field === 'answerType' && value === 'multiple_choice') {
+        const opts = getOptionsList(updated[index].options);
+        if (opts.length === 0) updated[index].options = "Option 1\nOption 2\nOption 3";
+      }
+      return updated;
+    });
+    setHasUnsavedChanges(true);
+    setLastQuestionsChange(Date.now());
   };
 
   // == Option Management ==
@@ -326,15 +356,15 @@ export function PageForm({
     updateQuestion(qi, 'options', opts.join('\n'));
   };
 
-  // == Render Component ==
   return (
     <motion.div
+      data-stable-id={stableTempIdRef.current}
       variants={fadeCard}
       initial="hidden"
       animate="visible"
       className="border-2 border-brand-gold-200 bg-white rounded-2xl shadow-lg mb-5"
     >
-      {/* == Page Header == */}
+      {/* Header */}
       <div className="border-b border-brand-gold-200 p-4">
         <div className="flex justify-between items-center">
           <h3 className="text-xl font-heading font-bold text-ilaw-navy flex items-center">
@@ -361,35 +391,30 @@ export function PageForm({
             >
               {hasUnsavedChanges ? 'Save Page' : 'Saved'}
             </Button>
-          {showRemoveButton && (
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={onRemove}
-              className="bg-red-500 hover:bg-red-600 text-white font-heading font-bold"
-            >
-              <Trash2 className="h-4 w-4 mr-1" />
-              Remove Page
-            </Button>
-          )}
+            {showRemoveButton && (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={onRemove}
+                className="bg-red-500 hover:bg-red-600 text-white font-heading font-bold"
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Remove Page
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* == Form Content == */}
+      {/* Content */}
       <div className="p-4">
         <Form {...form}>
           <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-5">
-
-            {/* Hidden field for Cloudinary ID */}
             <FormField control={form.control} name="imagePublicId" render={({ field }) => (<input type="hidden" {...field} />)} />
 
-            {/* === Top Grid: fields (2 cols) + image (1 col) === */}
             <motion.div variants={sectionFade} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
-              {/* Left: fields */}
               <div className="md:col-span-2 flex flex-col gap-4 md:h-full">
-                {/* Title */}
                 <motion.div variants={itemFade}>
                   <FormField
                     control={form.control}
@@ -402,7 +427,10 @@ export function PageForm({
                             placeholder="Enter a title for this page"
                             {...field}
                             value={field.value ?? ''}
-                            onChange={(e) => field.onChange(e.target.value)}
+                            onChange={(e) => {
+                              field.onChange(e.target.value);
+                              if (!isInitialLoad) setHasUnsavedChanges(true);
+                            }}
                             className="border-2 border-brand-gold-200 focus:border-ilaw-gold"
                           />
                         </FormControl>
@@ -412,7 +440,6 @@ export function PageForm({
                   />
                 </motion.div>
 
-                {/* Content */}
                 <motion.div variants={itemFade}>
                   <FormField
                     control={form.control}
@@ -424,7 +451,11 @@ export function PageForm({
                           <Textarea
                             placeholder="Enter the content for this page..."
                             {...field}
-                            className="border-2 border-brand-gold-200 focus:border-ilaw-gold flex-1 h-full min-h-[260px] md:min-h-0 resize-vertical md:resize-none"
+                            onChange={(e) => {
+                              field.onChange(e.target.value);
+                              if (!isInitialLoad) setHasUnsavedChanges(true);
+                            }}
+                            className="border-2 border-brand-gold-200 focus:border-ilaw-gold flex-1 h-full min-h=[260px] md:min-h-0 resize-vertical md:resize-none"
                           />
                         </FormControl>
                         <FormMessage />
@@ -434,7 +465,7 @@ export function PageForm({
                 </motion.div>
               </div>
 
-              {/* Right: image panel */}
+              {/* Image */}
               <motion.div variants={itemFade} className="md:col-span-1 space-y-3">
                 <FormField
                   control={form.control}
@@ -443,7 +474,6 @@ export function PageForm({
                     <FormItem>
                       <FormLabel className="text-ilaw-navy font-heading font-bold">🖼️ Page Image</FormLabel>
                       <div className="space-y-3">
-                        {/* Preview */}
                         <AnimatePresence initial={false} mode="popLayout">
                           {previewSrc ? (
                             <motion.div
@@ -459,7 +489,6 @@ export function PageForm({
                                   alt="Page image preview"
                                   className="w-full h-full object-cover"
                                   onError={() => {
-                                    // fallback to raw if transformed failed
                                     if (previewSrc === transformed && fallbackRaw) {
                                       setPreviewSrc(fallbackRaw);
                                     }
@@ -523,7 +552,6 @@ export function PageForm({
                           )}
                         </AnimatePresence>
 
-                        {/* URL input */}
                         <div className="relative">
                           <FormControl>
                             <Input
@@ -554,7 +582,7 @@ export function PageForm({
               </motion.div>
             </motion.div>
 
-            {/* == Questions Section == */}
+            {/* Questions */}
             <motion.div variants={sectionFade} className="pt-5 border-t-2 border-brand-gold-200">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-heading font-bold text-ilaw-navy flex items-center">
@@ -649,7 +677,10 @@ export function PageForm({
                             <Label className="text-ilaw-navy font-heading font-bold">Options</Label>
                             <div className="border-2 border-brand-gold-200 rounded-xl mt-1 bg-white">
                               {getOptionsList(question.options).map((option, optionIdx) => (
-                                <div key={optionIdx} className="flex items-center p-3 border-b border-brand-gold-200 last:border-b-0">
+                                <div
+                                  key={optionIdx}
+                                  className="flex items-center p-3 border-b border-brand-gold-200 last:border-b-0"
+                                >
                                   <input
                                     type="radio"
                                     id={`question-${index}-option-${optionIdx}`}
@@ -713,7 +744,6 @@ export function PageForm({
               )}
             </motion.div>
 
-            {/* == Save Instructions == */}
             <motion.div variants={sectionFade} className="pt-5 border-t-2 border-brand-gold-200">
               <div className="bg-gradient-to-r from-brand-gold-50 to-brand-navy-50/40 border-2 border-brand-gold-200 rounded-xl p-3 text-center">
                 <p className="text-sm text-ilaw-navy font-medium flex items-center justify-center">
